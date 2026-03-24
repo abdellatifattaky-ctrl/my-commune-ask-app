@@ -2,22 +2,25 @@ import streamlit as st
 import pandas as pd
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Pt, Inches
 from io import BytesIO
 from datetime import date
 
-st.set_page_config(page_title="Commune d'Askaouen", layout="wide")
+# إعداد الصفحة
+st.set_page_config(page_title="Commune d'Askaouen - App", layout="wide")
 
+# --- القائمة الجانبية (أعضاء اللجنة) ---
 st.sidebar.header("اللجنة الإدارية")
 president = st.sidebar.text_input("Le Président", "MOHAMED ZILALI")
 directeur = st.sidebar.text_input("Le Directeur des Services", "M BAREK BAK")
 technicien = st.sidebar.text_input("Le Technicien", "ATTAKY ABDELLATIF")
 
+# اختيار نوع الوثيقة
 option = st.selectbox("نوع الوثيقة:", 
                      ["Avis d'achat sur Bons de Commande",
                       "1er PV : Ouverture et Classement",
                       "PV de Validation (Confirmation d'offre)"])
 
-# متغيرات لتخزين البيانات خارج الفورم
 doc_download = None
 file_name = ""
 
@@ -25,13 +28,13 @@ with st.form("main_form"):
     col1, col2 = st.columns(2)
     with col1:
         num_doc = st.text_input("رقم السند/الإعلان", "03/ASK/2025")
-        objet = st.text_input("الموضوع (Objet)", "Location d’une Tractopelle")
+        objet = st.text_input("الموضوع (Objet)", "Station de pompage et relevage")
     with col2:
         date_doc = st.date_input("التاريخ", date.today())
         heure_doc = st.text_input("الساعة", "10:00")
 
-    # جدول المتنافسين (تم توحيد اسم العمود ليكون 'Rang')
-    st.subheader("جدول ترتيب المتنافسين")
+    # جدول المتنافسين الخمسة
+    st.subheader("جدول الترتيب والمنافسين")
     df_init = pd.DataFrame([
         {"Rang": "1er", "Nom": "", "Montant": ""},
         {"Rang": "2ème", "Nom": "", "Montant": ""},
@@ -42,38 +45,62 @@ with st.form("main_form"):
     edited_rank = st.data_editor(df_init, use_container_width=True)
 
     selected_rank = "1er"
-    statut = ""
     if option == "PV de Validation (Confirmation d'offre)":
-        selected_rank = st.selectbox("اختر ترتيب المتنافس المعني:", ["1er", "2ème", "3ème", "4ème", "5ème"])
-        statut = st.radio("حالة التأكيد:", ["A confirmé", "N'a pas confirmé"])
+        selected_rank = st.selectbox("المتنافس المعني بالتأكيد:", ["1er", "2ème", "3ème", "4ème", "5ème"])
 
-    submitted = st.form_submit_button("تجهيز الوثيقة")
+    submitted = st.form_submit_button("توليد الوثيقة الرسمية")
 
-# معالجة البيانات خارج الفورم لحل مشكلة الصورة رقم 5
 if submitted:
     doc = Document()
-    doc.add_heading(f"COMMUNE ASKAOUN - {option}", 0)
     
-    # حل مشكلة الصورة رقم 6: الوصول للبيانات بشكل آمن
-    try:
-        target_row = edited_rank[edited_rank['Rang'] == selected_rank].iloc[0]
-        
-        if option == "PV de Validation (Confirmation d'offre)":
-            doc.add_paragraph(f"Société: {target_row['Nom']}")
-            doc.add_paragraph(f"Statut: {statut}")
-            doc.add_paragraph(f"Montant: {target_row['Montant']} DH")
-        
-        # إضافة التوقيعات
-        doc.add_paragraph(f"\nSignatures: {president} | {directeur} | {technicien}")
-        
-        bio = BytesIO()
-        doc.save(bio)
-        doc_download = bio.getvalue()
-        file_name = f"PV_{num_doc.replace('/', '_')}.docx"
-    except Exception as e:
-        st.error(f"خطأ في البيانات: {e}")
+    # --- إضافة الترويسة (Header) بنظام الجدول المخفي ---
+    header_section = doc.sections[1]
+    header = header_section.header
+    htable = header.add_table(2, 3, Inches(6))
+    
+    # الجانب الأيسر (Français)
+    c_left = htable.rows[0].cells[0]
+    p_fr = c_left.add_paragraph("ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nPROVINCE DE TAROUDANTE\nCOMMUNE D'ASKAOUN")
+    p_fr.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    
+    # الجانب الأيمن (العربية)
+    c_right = htable.rows[0].cells[1]
+    p_ar = c_right.add_paragraph("المملكة المغربية\nوزارة الداخلية\nإقليم تارودانت\nدائرة تالوين\nجماعة أسكاون")
+    p_ar.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-# زر التحميل خارج الفورم (حل نهائي)
+    # --- العنوان الرئيسي ---
+    doc.add_paragraph("\n")
+    title_text = f"COMMUNE ASKAOUN - {option}"
+    title = doc.add_heading(title_text, level=1)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    doc.add_paragraph(f"Objet : {objet}").bold = True
+    doc.add_paragraph(f"Réf : {num_doc} | Date : {date_doc} à {heure_doc}")
+
+    # محتوى المحضر الأول
+    if option == "1er PV : Ouverture et Classement":
+        doc.add_paragraph("\nTableau de classement des concurrents :")
+        table = doc.add_table(rows=1, cols=3)
+        table.style = 'Table Grid'
+        hdr = table.rows[0].cells
+        hdr[0].text, hdr[1].text, hdr[2].text = 'Rang', 'Nom du Concurrent', 'Montant TTC'
+        for _, row in edited_rank.iterrows():
+            if row["Nom"]:
+                r = table.add_row().cells
+                r[0].text, r[1].text, r[2].text = str(row["Rang"]), str(row["Nom"]), f"{row['Montant']} DH"
+
+    # التوقيعات (كما في صورتك الأخيرة)
+    doc.add_paragraph("\n" + "_"*40)
+    sig_text = f"Signatures: {president} | {directeur} | {technicien}"
+    p_sig = doc.add_paragraph(sig_text)
+    
+    # تحويل الملف للتحميل
+    bio = BytesIO()
+    doc.save(bio)
+    doc_download = bio.getvalue()
+    file_name = f"{option.replace(' ', '_')}_{num_doc.replace('/', '-')}.docx"
+
+# زر التحميل خارج الاستمارة لتفدي الأخطاء
 if doc_download:
-    st.success("✅ الوثيقة جاهزة")
-    st.download_button("📥 تحميل ملف الوورد", doc_download, file_name)
+    st.success("✅ تم دمج الشعار والبيانات بنجاح!")
+    st.download_button("📥 تحميل المستند الرسمي (.docx)", doc_download, file_name)
