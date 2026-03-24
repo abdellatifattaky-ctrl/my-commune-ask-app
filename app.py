@@ -2,105 +2,128 @@ import streamlit as st
 import pandas as pd
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt, Inches
+from docx.shared import Inches, Pt
 from io import BytesIO
 from datetime import date
+from num2words import num2words
 
 # إعداد الصفحة
-st.set_page_config(page_title="Commune d'Askaouen - App", layout="wide")
+st.set_page_config(page_title="Commune d'Askaouen - Gestion des 5 PV", layout="wide")
 
-# --- القائمة الجانبية (أعضاء اللجنة) ---
+# دالة تحويل المبلغ إلى حروف بالفرنسية
+def format_amount_fr(amount):
+    try:
+        val = float(str(amount).replace(',', ''))
+        euros = int(val)
+        cents = int(round((val - euros) * 100))
+        text = num2words(euros, lang='fr').upper() + " DIRHAMS"
+        if cents > 0:
+            text += f" ET {num2words(cents, lang='fr').upper()} CENTIMES"
+        else:
+            text += " PILE"
+        return text
+    except:
+        return "________________"
+
+# --- القائمة الجانبية ---
+st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/d/d5/Coat_of_arms_of_Morocco.svg", width=100)
 st.sidebar.header("اللجنة الإدارية")
-president = st.sidebar.text_input("Le Président", "MOHAMED ZILALI")
-directeur = st.sidebar.text_input("Le Directeur des Services", "M BAREK BAK")
-technicien = st.sidebar.text_input("Le Technicien", "ATTAKY ABDELLATIF")
+pres = st.sidebar.text_input("Le Président", "MOHAMED ZILALI")
+dir_serv = st.sidebar.text_input("Directeur des Services", "M BAREK BAK")
+tech = st.sidebar.text_input("Le Technicien", "ATTAKY ABDELLATIF")
 
-# اختيار نوع الوثيقة
-option = st.selectbox("نوع الوثيقة:", 
-                     ["Avis d'achat sur Bons de Commande",
-                      "1er PV : Ouverture et Classement",
-                      "PV de Validation (Confirmation d'offre)"])
+st.title("🏛️ نظام المحاضر الخمسة - جماعة أسكاون")
 
-doc_download = None
-file_name = ""
+# --- إدخال البيانات ---
+with st.container():
+    col1, col2, col3 = st.columns([2,1,1])
+    num_bc = col1.text_input("رقم سند الطلب (N° BC)", "01/ASK/2025")
+    date_pub = col2.date_input("تاريخ النشر", date(2025, 3, 25))
+    reunion_hour = col3.text_input("الساعة", "12h00mn")
+    
+    obj_bc = st.text_area("موضوع الطلب (Objet)", "Location d’une Tractopelle pour les travaux divers.")
 
-with st.form("main_form"):
-    col1, col2 = st.columns(2)
-    with col1:
-        num_doc = st.text_input("رقم السند/الإعلان", "03/ASK/2025")
-        objet = st.text_input("الموضوع (Objet)", "Station de pompage et relevage")
-    with col2:
-        date_doc = st.date_input("التاريخ", date.today())
-        heure_doc = st.text_input("الساعة", "10:00")
+# --- جدول المتنافسين الخمسة ---
+st.subheader("📊 ترتيب المتنافسين الخمسة")
+df_init = pd.DataFrame([
+    {"Rang": 1, "Nom": "STE OUBRAIM SARL", "Montant": "69840.00"},
+    {"Rang": 2, "Nom": "DECO GRC", "Montant": "93120.00"},
+    {"Rang": 3, "Nom": "AIT MOUMOU REALISATION", "Montant": "102432.00"},
+    {"Rang": 4, "Nom": "KADEM SARL", "Montant": "111744.00"},
+    {"Rang": 5, "Nom": "TOUZANI 2ZD", "Montant": "114072.00"}
+])
+edited_df = st.data_editor(df_init, num_rows="fixed", use_container_width=True)
 
-    # جدول المتنافسين الخمسة
-    st.subheader("جدول الترتيب والمنافسين")
-    df_init = pd.DataFrame([
-        {"Rang": "1er", "Nom": "", "Montant": ""},
-        {"Rang": "2ème", "Nom": "", "Montant": ""},
-        {"Rang": "3ème", "Nom": "", "Montant": ""},
-        {"Rang": "4ème", "Nom": "", "Montant": ""},
-        {"Rang": "5ème", "Nom": "", "Montant": ""}
-    ])
-    edited_rank = st.data_editor(df_init, use_container_width=True)
+# --- اختيار نوع المحضر والسيناريو ---
+st.subheader("📄 توليد المحضر")
+pv_type = st.selectbox("اختر المحضر المطلوب استخراجه الآن:", [
+    "PV 1 : فتح الأظرفة والترتيب (الكل)",
+    "PV 2 : إقصاء الأول واستدعاء الثاني",
+    "PV 3 : إقصاء الثاني واستدعاء الثالث",
+    "PV 4 : إقصاء الثالث واستدعاء الرابع",
+    "PV 5 : إقصاء الرابع واستدعاء الخامس / أو الإسناد النهائي"
+])
 
-    selected_rank = "1er"
-    if option == "PV de Validation (Confirmation d'offre)":
-        selected_rank = st.selectbox("المتنافس المعني بالتأكيد:", ["1er", "2ème", "3ème", "4ème", "5ème"])
+is_final = st.checkbox("هل هذا هو محضر الإسناد النهائي (Attribution)؟")
+reunion_date = st.date_input("تاريخ اليوم (تاريخ المحضر)", date.today())
+next_meeting = st.date_input("تاريخ الجلسة القادمة (في حالة الاستدعاء)")
 
-    submitted = st.form_submit_button("توليد الوثيقة الرسمية")
-
-if submitted:
+if st.button("🚀 إنشاء ملف Word للمحضر"):
     doc = Document()
     
-    # --- إضافة الترويسة (Header) بنظام الجدول المخفي ---
-    header_section = doc.sections[0]
-    header = header_section.header
+    # الترويسة الرسمية
+    header = doc.sections[0].header
     htable = header.add_table(1, 2, Inches(6))
-    
-    # الجانب الأيسر (Français)
-    c_left = htable.rows[0].cells[0]
-    p_fr = c_left.add_paragraph("ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nPROVINCE DE TAROUDANTE\nCOMMUNE D'ASKAOUN")
-    p_fr.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    
-    # الجانب الأيمن (العربية)
-    c_right = htable.rows[0].cells[1]
-    p_ar = c_right.add_paragraph("المملكة المغربية\nوزارة الداخلية\nإقليم تارودانت\nدائرة تالوين\nجماعة أسكاون")
-    p_ar.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    htable.rows[0].cells[0].text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nPROVINCE DE TAROUDANTE\nCOMMUNE D'ASKAOUN"
+    htable.rows[0].cells[1].text = "المملكة المغربية\nوزارة الداخلية\nإقليم تارودانت\nجماعة أسكاون"
+    htable.rows[0].cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-    # --- العنوان الرئيسي ---
+    # العنوان
     doc.add_paragraph("\n")
-    title_text = f"COMMUNE ASKAOUN - {option}"
-    title = doc.add_heading(title_text, level=1)
+    title = doc.add_heading(f"{pv_type.split(':')[0]}", level=1)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
-    doc.add_paragraph(f"Objet : {objet}").bold = True
-    doc.add_paragraph(f"Réf : {num_doc} | Date : {date_doc} à {heure_doc}")
+    doc.add_paragraph("De la commission d’ouverture des plis\nProcédure Bon de commande").alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    # محتوى المحضر الأول
-    if option == "1er PV : Ouverture et Classement":
-        doc.add_paragraph("\nTableau de classement des concurrents :")
-        table = doc.add_table(rows=1, cols=3)
-        table.style = 'Table Grid'
-        hdr = table.rows[0].cells
-        hdr[0].text, hdr[1].text, hdr[2].text = 'Rang', 'Nom du Concurrent', 'Montant TTC'
-        for _, row in edited_rank.iterrows():
-            if row["Nom"]:
-                r = table.add_row().cells
-                r[0].text, r[1].text, r[2].text = str(row["Rang"]), str(row["Nom"]), f"{row['Montant']} DH"
+    # النصوص الثابتة
+    doc.add_paragraph(f"Objet : {obj_bc}").bold = True
+    doc.add_paragraph(f"Le {reunion_date} à {reunion_hour}, la commission composée de :")
+    doc.add_paragraph(f"- {pres} : Président\n- {dir_serv} : Directeur\n- {tech} : Technicien")
+    doc.add_paragraph(f"S'est réunie... concernant l’avis n° {num_bc} publié le {date_pub}...")
 
-    # التوقيعات (كما في صورتك الأخيرة)
-    doc.add_paragraph("\n" + "_"*40)
-    sig_text = f"Signatures: {president} | {directeur} | {technicien}"
-    p_sig = doc.add_paragraph(sig_text)
-    
-    # تحويل الملف للتحميل
+    # منطق المحاضر بناءً على البيانات
+    if "PV 1" in pv_type:
+        doc.add_paragraph("Classement des concurrents (Offres électroniques) :")
+        tab = doc.add_table(rows=1, cols=3); tab.style = 'Table Grid'
+        hdr = tab.rows[0].cells; hdr[0].text, hdr[1].text, hdr[2].text = 'Rang', 'Concurrent', 'Montant TTC'
+        for _, r in edited_df.iterrows():
+            row_cells = tab.add_row().cells
+            row_cells[0].text, row_cells[1].text, row_cells[2].text = str(r['Rang']), r['Nom'], f"{r['Montant']} MAD"
+        
+        first = edited_df.iloc[0]
+        amt_txt = format_amount_fr(first['Montant'])
+        doc.add_paragraph(f"\nLe président invite la société {first['Nom']} (Moins disant) pour {first['Montant']} DH ({amt_txt}) à confirmer son offre le {next_meeting}.")
+
+    elif "PV 2" in pv_type or "PV 3" in pv_type or "PV 4" in pv_type or "PV 5" in pv_type:
+        # تحديد من خرج ومن دخل بناءً على رقم المحضر
+        idx = int(pv_type[3]) - 1 # مثلا PV 2 -> idx 1
+        out_co = edited_df.iloc[idx-1]
+        in_co = edited_df.iloc[idx]
+        
+        doc.add_paragraph(f"La commission constate que la société {out_co['Nom']} n'a pas confirmé son offre.")
+        
+        if is_final:
+            amt_txt = format_amount_fr(in_co['Montant'])
+            doc.add_paragraph(f"Le président valide la confirmation et ATTRIBUE le bon de commande à {in_co['Nom']} pour {in_co['Montant']} DH ({amt_txt}).").bold = True
+        else:
+            amt_txt = format_amount_fr(in_co['Montant'])
+            doc.add_paragraph(f"Après écartement de {out_co['Nom']}, le président invite {in_co['Nom']} ({in_co['Rang']}ème) pour {in_co['Montant']} DH ({amt_txt}) à confirmer son offre le {next_meeting}.")
+
+    # التوقيعات
+    doc.add_paragraph(f"\nAskaouen le {reunion_date}\n" + "_"*40)
+    p_sig = doc.add_paragraph(f"{pres}                {dir_serv}                {tech}")
+    p_sig.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # التحميل
     bio = BytesIO()
     doc.save(bio)
-    doc_download = bio.getvalue()
-    file_name = f"{option.replace(' ', '_')}_{num_doc.replace('/', '-')}.docx"
-
-# زر التحميل خارج الاستمارة لتفدي الأخطاء
-if doc_download:
-    st.success("✅ تم دمج الشعار والبيانات بنجاح!")
-    st.download_button("📥 تحميل المستند الرسمي (.docx)", doc_download, file_name)
+    st.download_button("📥 تحميل المحضر بصيغة Word", bio.getvalue(), f"PV_{num_bc.replace('/','-')}.docx")
