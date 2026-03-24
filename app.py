@@ -1,85 +1,99 @@
 import streamlit as st
+import pandas as pd
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt
 from io import BytesIO
 from datetime import date
 
-# ... (الكود السابق يبقى كما هو، فقط نضيف خيار "Avis d'achat" في القائمة)
+st.set_page_config(page_title="Gestion Administrative - Askaouen", layout="wide")
 
-option = st.selectbox("Sélectionner le type de document :", 
-                     ["1er PV : Ouverture et Classement", 
-                      "2ème/3ème PV : Écartement et Invitation du suivant", 
-                      "4ème PV : Validation et Attribution finale",
-                      "Avis d'achat sur Bons de Commande"])
+st.title("🏛️ منصة التدبير الإداري - جماعة أسكاون")
+st.markdown("---")
 
-if option == "Avis d'achat sur Bons de Commande":
-    st.subheader("Configuration de l'Avis d'achat")
-    with st.form("avis_form"):
-        num_avis = st.text_input("N° Avis d'achat", "03/ASK/2025")
-        objet_avis = st.text_input("Objet de la prestation", "Station de pompage et relevage")
-        delai = st.text_input("Délai d'exécution (jours)", "10")
-        date_limite = st.date_input("Date limite de réception des devis")
-        
-        st.write("Détails des prestations (Tableau) :")
-        items_data = st.text_area("Entrez les articles (Désignation;Unité;Quantité)", 
-                                  help="Exemple: Pompe solaire;U;1\nConduite PN 16;ML;50")
-        
-        submitted_avis = st.form_submit_button("Générer l'Avis d'achat")
+# إعدادات اللجنة في الجانب
+st.sidebar.header("اللجنة الإدارية")
+president = st.sidebar.text_input("الرئيس", "MOHAMED ZILALI")
+directeur = st.sidebar.text_input("مدير المصالح", "M BAREK BAK")
+technicien = st.sidebar.text_input("التقني", "ATTAKY ABDELLATIF")
 
-        if submitted_avis:
-            doc = Document()
-            
-            # الترويسة الرسمية (Header مزدوج)
-            header = doc.add_table(rows=1, cols=2)
-            header.allow_autofit = True
-            
-            # جهة اليمين (العربية)
-            right_cell = header.rows[0].cells[1]
-            p_ar = right_cell.add_paragraph("المملكة المغربية\nوزارة الداخلية\nإقليم تارودانت\nدائرة تالوين\nجماعة أسكاون")
-            p_ar.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            
-            # جهة اليسار (الفرنسية)
-            left_cell = header.rows[0].cells[0]
-            p_fr = left_cell.add_paragraph("ROYAUME DU MAROC\nMINISTERE DE L’INTERIEUR\nPROVINCE DE TAROUDANTE\nCERCLE DE TALIOUINE\nCOMMUNE D’ASKAOUN")
-            p_fr.alignment = WD_ALIGN_PARAGRAPH.LEFT
+# اختيار نوع الوثيقة
+option = st.selectbox("اختر نوع الوثيقة:", 
+                     ["Avis d'achat sur Bons de Commande",
+                      "1er PV : Ouverture et Classement",
+                      "2ème/3ème PV : Écartement",
+                      "4ème PV : Attribution finale"])
 
-            # العنوان الرئيسي
-            doc.add_paragraph("\n")
-            title = doc.add_heading(f"AVIS D’ACHAT SUR BONS DE COMMANDE N° {num_avis}", 1)
-            title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            
-            doc.add_paragraph(f"Objet de la prestation : {objet_avis}").bold = True
-            
-            # الجدول التقني
-            table = doc.add_table(rows=1, cols=4)
-            table.style = 'Table Grid'
-            hdr_cells = table.rows[0].cells
-            hdr_cells[0].text = 'N°'
-            hdr_cells[1].text = 'Désignation des prestations'
-            hdr_cells[2].text = 'Unité'
-            hdr_cells[3].text = 'Quantité'
+doc_download = None
+file_name = ""
 
-            i = 1
-            for line in items_data.split('\n'):
-                if ';' in line:
-                    desc, unit, qty = line.split(';')
-                    row = table.add_row().cells
-                    row[0].text = str(i)
-                    row[1].text = desc
-                    row[2].text = unit
-                    row[3].text = qty
-                    i += 1
+with st.form("global_form"):
+    col1, col2 = st.columns(2)
+    with col1:
+        num_doc = st.text_input("رقم السند/الملف", "03/ASK/2025")
+        objet = st.text_input("الموضوع (Objet)", "Location d’une Tractopelle")
+    with col2:
+        date_reunion = st.date_input("تاريخ اليوم/الاجتماع", date.today())
+        heure = st.text_input("الساعة (Heure)", "12h00mn")
 
-            doc.add_paragraph(f"\n- Lieu d'exécution : la commune d'Askaoun.")
-            doc.add_paragraph(f"- Délai d'exécution : {delai} jours.")
-            doc.add_paragraph(f"- Date limite de réception : {date_limite}.")
-            doc.add_paragraph(f"- Les plis sont déposés électroniquement sur : www.marchespublics.gov.ma")
+    # --- الجزء الخاص بالإعلان (Avis) ---
+    if option == "Avis d'achat sur Bons de Commande":
+        st.subheader("جدول المواد/الخدمات")
+        df_init = pd.DataFrame([{"Désignation": "", "Unité": "", "Quantité": ""}])
+        edited_df = st.data_editor(df_init, num_rows="dynamic", use_container_width=True)
 
-            doc.add_paragraph(f"\nASKAOUN LE : {date.today()}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            doc.add_paragraph("Le Président de la commune").alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    # --- الجزء الخاص بالمحاضر (PVs) ---
+    else:
+        if "1er PV" in option:
+            st.subheader("ترتيب المتنافسين (Nom;Total TTC)")
+            competitors = st.text_area("أدخل الشركات (شركة 1;60000)", help="شركة;مبلغ")
+        elif "2ème/3ème" in option:
+            societe_ecartee = st.text_input("الشركة المبعدة (N'a pas confirmé)")
+            societe_suivante = st.text_input("الشركة الموالية (Invitée)")
+            montant_suivant = st.text_input("المبلغ (TTC)")
+        elif "4ème" in option:
+            gagnant = st.text_input("الشركة الفائزة نهائياً")
+            montant_final = st.text_input("المبلغ النهائي")
 
-            bio = BytesIO()
-            doc.save(bio)
-            st.success("✅ Avis d'achat généré !")
-            st.download_button("📥 Télécharger l'Avis (.docx)", bio.getvalue(), f"Avis_{num_avis.replace('/','_')}.docx")
+    submitted = st.form_submit_button("تجهيز الوثيقة للتحميل")
+
+if submitted:
+    doc = Document()
+    
+    # 1. حالة الإعلان (Avis)
+    if option == "Avis d'achat sur Bons de Commande":
+        doc.add_heading(f"AVIS D’ACHAT N° {num_doc}", 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph(f"Objet : {objet}").bold = True
+        table = doc.add_table(rows=1, cols=4); table.style = 'Table Grid'
+        for i, row in edited_df.iterrows():
+            if row["Désignation"]:
+                r = table.add_row().cells
+                r[0].text, r[1].text, r[2].text, r[3].text = str(i+1), str(row["Désignation"]), str(row["Unité"]), str(row["Quantité"])
+    
+    # 2. حالة المحاضر (بناءً على النماذج الفرنسية التي أرسلتها)
+    else:
+        doc.add_heading(f"{option.split(':')[0]}", 1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph("Commission d’ouverture des plis - Procédure BC").alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph(f"Le {date_reunion} à {heure}, la commission composée de :")
+        doc.add_paragraph(f"- {president}\n- {directeur}\n- {technicien}")
+        doc.add_paragraph(f"S'est réunie pour l'objet : {objet} (Avis n° {num_doc})")
+
+        if "1er PV" in option:
+            doc.add_paragraph("Les concurrents classés :")
+            for line in competitors.split('\n'):
+                if ';' in line: doc.add_paragraph(f"- {line.replace(';', ' : ')} MAD")
+        elif "2ème/3ème" in option:
+            doc.add_paragraph(f"La société {societe_ecartee} est écartée. La société {societe_suivante} est invitée pour {montant_suivant} DH.")
+        elif "4ème" in option:
+            doc.add_paragraph(f"L'attribution finale est faite à : {gagnant} pour un montant de {montant_final} DH.")
+
+    # التوقيعات
+    doc.add_paragraph(f"\nAskaouen, le {date_reunion}")
+    doc.add_paragraph(f"{president}          {directeur}          {technicien}")
+
+    bio = BytesIO(); doc.save(bio)
+    doc_download = bio.getvalue()
+    file_name = f"{option.replace(' ', '_')}_{num_doc.replace('/','_')}.docx"
+
+if doc_download:
+    st.success("✅ الوثيقة جاهزة!")
+    st.download_button("📥 تحميل الآن", doc_download, file_name)
