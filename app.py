@@ -7,73 +7,77 @@ from io import BytesIO
 from datetime import date
 from num2words import num2words
 
-# --- دالة تحويل المبالغ المالية ---
-def format_money_fr(amount_str):
-    try:
-        val = float(str(amount_str).replace(' ', '').replace(',', ''))
-        words = num2words(int(val), lang='fr').upper()
-        cents = int(round((val - int(val)) * 100))
-        text = f"{words} DIRHAMS"
-        if cents > 0:
-            text += f" ET {num2words(cents, lang='fr').upper()} CENTIMES"
-        else:
-            text += " ET ZERO CENTIMES"
-        return text
-    except: return "________________"
+# --- وظيفة التنسيق والترويسة الموحدة ---
+def setup_header(doc):
+    section = doc.sections[0]
+    section.top_margin, section.bottom_margin = Cm(2), Cm(2)
+    header = section.header
+    htable = header.add_table(1, 2, Inches(6.5))
+    c_fr = htable.rows[0].cells[0].paragraphs[0]
+    c_fr.text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nCOMMUNE D'ASKAOUN"
+    c_ar = htable.rows[0].cells[1].paragraphs[0]
+    c_ar.text = "المملكة المغربية\nوزارة الداخلية\nجماعة أسكاون"
+    c_ar.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-# --- إعدادات الواجهة ---
-st.set_page_config(page_title="Commune Askaouen ERP", layout="wide")
+# --- واجهة التطبيق ---
+st.set_page_config(page_title="منصة جماعة أسكاون المتكاملة", layout="wide")
 
-# --- القائمة الجانبية لإدارة الإعدادات ---
-st.sidebar.title("⚙️ إعدادات المنصة")
-mode = st.sidebar.selectbox("نوع المسطرة القانونية:", ["Bon de Commande (BC)", "Appel d'Offres (AO)"])
-task = st.sidebar.radio("المهمة المطلوبة:", ["المحاضر (PVs)", "أوامر الخدمة (OS)", "المراسلات & الالتزام"])
+st.sidebar.title("🏛️ الإدارة الرقمية")
+menu = st.sidebar.radio("اختر القسم:", ["الصفقات العمومية (BC/AO)", "أشغال المجلس (الدورات)", "الأوامر الخدمية (OS)"])
 
-st.sidebar.divider()
-st.sidebar.subheader("✍️ لجنة الإشراف")
-pres = st.sidebar.text_input("الرئيس", "MOHAMED ZILALI")
-dir_serv = st.sidebar.text_input("مدير المصالح", "M BAREK BAK")
-tech = st.sidebar.text_input("التقني", "ABDELLATIF ATTAKY")
-
-# --- محرك البيانات الرئيسي ---
-st.title(f"🏛️ إدارة {mode} - جماعة أسكاون")
-
-col_a, col_b = st.columns(2)
-num_ref = col_a.text_input("رقم السند / الصفقة", "01/ASK/2026")
-obj_ref = col_b.text_input("موضوع المشروع", "تطوير السوق الأسبوعي / توريد معدات")
-
-# --- قسم الجداول ---
-st.subheader("📋 بيانات المتنافسين / المقاول")
-df_init = pd.DataFrame([{"Nom": "STE EXAMPLE SARL", "Montant": "140000.00"}])
-data = st.data_editor(df_init, use_container_width=True, num_rows="dynamic")
-
-# --- توليد المستندات بناءً على المهمة ---
-st.divider()
-
-if task == "المحاضر (PVs)":
-    pv_num = st.slider("رقم المحضر", 1, 5)
-    if st.button("توليد المحضر الرسمي"):
-        # (هنا يوضع كود توليد المحاضر الذي ضبطناه سابقاً)
-        st.info("سيتم توليد المحضر رقم " + str(pv_num))
-
-elif task == "أوامر الخدمة (OS)":
-    os_type = st.selectbox("نوع أمر الخدمة:", ["Commencement (بداية)", "Arrêt (توقف)", "Reprise (استئناف)"])
-    os_date = st.date_input("تاريخ الأمر")
+# --- القسم الأول: الصفقات وطلبات العروض ---
+if menu == "الصفقات العمومية (BC/AO)":
+    st.header("📋 إدارة الصفقات وطلبات العروض")
+    type_p = st.selectbox("نوع المسطرة:", ["سند طلب (BC)", "طلب عروض مفتوح (AO Ouvert)", "طلب عروض محصور"])
+    num_p = st.text_input("رقم الصفقة/السند", "01/ASK/2026")
+    obj_p = st.text_area("موضوع الصفقة", "أدخل الموضوع هنا...")
     
-    if st.button(f"توليد {os_type}"):
-        doc = Document()
-        # إضافة الترويسة المقلوبة والتنسيق (نفس منطق الكود السابق)
-        p = doc.add_paragraph()
-        p.add_run(f"ORDRE DE SERVICE : {os_type}\n").bold = True
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        doc.add_paragraph(f"Il est ordonné à l'entreprise {data.iloc[0]['Nom']} de procéder à l'exécution (ou arrêt/reprise) des travaux relatifs à {obj_ref} à compter du {os_date}.")
-        
+    st.subheader("📊 جدول المتنافسين")
+    df = pd.DataFrame([{"Concurrent": "STE EXAMPLE", "Montant TTC": "150000.00", "Statut": "Admis"}])
+    data = st.data_editor(df, num_rows="dynamic")
+
+    if st.button("توليد المحضر الرسمي"):
+        doc = Document(); setup_header(doc)
+        title = doc.add_paragraph(f"PROCÈS-VERBAL\n{type_p} N° {num_p}")
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph(f"\nObjet : {obj_p}").bold = True
+        doc.add_paragraph(f"En application du décret n° 2-22-431 relatif aux marchés publics...")
+        # (إضافة الجدول آلياً هنا)
         bio = BytesIO(); doc.save(bio)
-        st.download_button("📥 تحميل أمر الخدمة", bio.getvalue(), f"OS_{os_type}.docx")
+        st.download_button("📥 تحميل المستند", bio.getvalue(), f"PV_{num_p}.docx")
 
-elif task == "المراسلات & الالتزام":
-    st.info("في انتظار الصيغة الرسمية التي ستزودني بها لدمجها هنا.")
+# --- القسم الثاني: الدورات والمجلس ---
+elif menu == "أشغال المجلس (الدورات)":
+    st.header("📝 محاضر دورات المجلس الجماعي")
+    type_s = st.selectbox("نوع الدورة", ["دورة عادية", "دورة استثنائية"])
+    date_s = st.date_input("تاريخ الدورة")
+    points = st.text_area("نقاط جدول الأعمال (نقطة في كل سطر)")
 
-# --- رسالة تشجيعية ---
-st.success("🚀 المنصة جاهزة للاختبار غداً على الحاسوب!")
+    if st.button("توليد محضر الدورة"):
+        doc = Document(); setup_header(doc)
+        title = doc.add_paragraph(f"محضر اجتماع {type_s}\nبتاريخ {date_s}")
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph(f"\nبناءً على القانون التنظيمي 113.14 المتعلق بالجماعات...")
+        doc.add_paragraph("جدول الأعمال :").bold = True
+        for p in points.split('\n'): doc.add_paragraph(f"- {p}")
+        bio = BytesIO(); doc.save(bio)
+        st.download_button("📥 تحميل المحضر", bio.getvalue(), "PV_Session.docx")
+
+# --- القسم الثالث: الأوامر الخدمية ---
+elif menu == "الأوامر الخدمية (OS)":
+    st.header("⚙️ الأوامر الخدمية (OS)")
+    os_type = st.selectbox("النوع", ["OS de Commencement", "OS d'Arrêt", "OS de Reprise"])
+    company = st.text_input("اسم الشركة المعنية")
+    os_date = st.date_input("تاريخ سريان الأمر")
+
+    if st.button("توليد الأمر الخدمي"):
+        doc = Document(); setup_header(doc)
+        title = doc.add_paragraph(f"{os_type}\nORDRE DE SERVICE")
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph(f"\nIl est ordonné à l'entreprise : {company}")
+        doc.add_paragraph(f"De procéder à l'exécution des travaux à compter du {os_date}.")
+        bio = BytesIO(); doc.save(bio)
+        st.download_button("📥 تحميل OS", bio.getvalue(), f"{os_type}.docx")
+
+st.divider()
+st.info("💡 ملاحظة: النماذج مدمجة وتتبع التنسيق الرسمي المعتمد.")
