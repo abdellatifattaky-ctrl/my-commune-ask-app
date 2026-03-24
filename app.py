@@ -54,9 +54,9 @@ if submitted:
     doc = Document()
     
     # --- إضافة الترويسة (Header) بنظام الجدول المخفي ---
-    header_section = doc.sections[1]
+    header_section = doc.sections[0]
     header = header_section.header
-    htable = header.add_table(2, 3, Inches(6))
+    htable = header.add_table(1, 2, Inches(6))
     
     # الجانب الأيسر (Français)
     c_left = htable.rows[0].cells[0]
