@@ -21,6 +21,7 @@ def format_to_words_fr(amount_str):
 
 st.set_page_config(page_title="Commune Askaouen - Système PV", layout="wide")
 
+# القائمة الجانبية
 st.sidebar.header("Membres de la Commission")
 p_name = st.sidebar.text_input("Président", "MOHAMED ZILALI")
 d_name = st.sidebar.text_input("Directeur du service", "M BAREK BAK")
@@ -34,26 +35,27 @@ with st.expander("📝 Détails Administratifs", expanded=True):
     date_pub = c2.date_input("Date de publication", date(2026, 3, 25))
     obj_bc = st.text_area("Objet", "Location d’une Tractopelle pour les travaux divers.")
 
-# حصر الجدول في 5 شركات كحد أقصى قانونياً
-st.subheader("📊 Liste des concurrents (Max 5 selon la loi)")
+# بيانات المتنافسين (5 شركات كحد أقصى)
+st.subheader("📊 Liste des concurrents")
 df_init = pd.DataFrame([
-    {"Rang": 1, "Nom": "SOCIETE 1", "Montant": "60000.00"},
-    {"Rang": 2, "Nom": "SOCIETE 2", "Montant": "70000.00"},
-    {"Rang": 3, "Nom": "SOCIETE 3", "Montant": "80000.00"},
-    {"Rang": 4, "Nom": "SOCIETE 4", "Montant": "90000.00"},
-    {"Rang": 5, "Nom": "SOCIETE 5", "Montant": "100000.00"}
+    {"Rang": 1, "Nom": "STE OUBRAIM SARL", "Montant": "69840.00"},
+    {"Rang": 2, "Nom": "DECO GRC", "Montant": "93120.00"},
+    {"Rang": 3, "Nom": "AIT MOUMOU REALISATION", "Montant": "102432.00"},
+    {"Rang": 4, "Nom": "KADEM SARL", "Montant": "111744.00"},
+    {"Rang": 5, "Nom": "TOUZANI 2ZD", "Montant": "114072.00"}
 ])
-data = st.data_editor(df_init, use_container_width=True, num_rows="fixed")
+data = st.data_editor(df_init, use_container_width=True)
 
 st.divider()
 c_pv1, c_pv2, c_pv3 = st.columns(3)
-# المحضر السادس هو محضر الحسم النهائي
 pv_num = c_pv1.selectbox("Numéro du PV:", [1, 2, 3, 4, 5, 6])
-is_final = c_pv2.checkbox("✅ Est-ce le PV d'attribution finale ?", value=(True if pv_num == 6 else False))
-reunion_date = c_pv3.date_input("Date de la séance", date.today())
+is_final = c_pv2.checkbox("✅ Est-ce le PV d'attribution finale ?")
+# خيار إعلان السند غير مثمر (خاص بالمحضر 6 غالباً)
+is_infructueux = st.checkbox("❌ B.C Infructueux (سند طلب غير مثمر)")
 
+reunion_date = c_pv3.date_input("Date de la séance", date.today())
 reunion_hour = st.text_input("Heure", "10h00mn")
-next_rdv = st.date_input("Prochain RDV (Si nécessaire)")
+next_rdv = st.date_input("Prochain RDV / Invitation")
 
 if st.button("🚀 إنشاء المحضر المنسق"):
     doc = Document()
@@ -61,41 +63,63 @@ if st.button("🚀 إنشاء المحضر المنسق"):
     section.top_margin, section.bottom_margin = Cm(2), Cm(2)
     section.left_margin, section.right_margin = Cm(2.5), Cm(2)
 
+    # الترويسة
     header = section.header
     htable = header.add_table(1, 2, Inches(6.5))
     htable.rows[0].cells[0].paragraphs[0].text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nCOMMUNE D'ASKAOUN"
     htable.rows[0].cells[1].paragraphs[0].text = "المملكة المغربية\nوزارة الداخلية\nجماعة أسكاون"
     htable.rows[0].cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
+    # العناوين
     doc.add_paragraph("\n")
-    doc.add_heading(f"{pv_num}éme Procès verbal", 1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title = doc.add_heading(f"{pv_num}éme Procès verbal", 1)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph("De la commission d’ouverture des plis\nProcédure Bon de commande").alignment = WD_ALIGN_PARAGRAPH.CENTER
 
+    # النص الأساسي (نفس النص لكل المحاضر)
     doc.add_paragraph(f"Objet : {obj_bc}").bold = True
-    doc.add_paragraph(f"Le {reunion_date.strftime('%d/%m/%Y')} à {reunion_hour}, la commission d’ouverture des plis s'est réunie conformément à l'article 91 du décret 2-22-431.")
-
-    idx = pv_num - 1
-    # معالجة خاصة للمحضر السادس (نهاية المسطرة)
-    if pv_num == 6:
-        prev = data.iloc[4] # الشركة الخامسة والأخيرة
-        doc.add_paragraph(f"Après avoir épuisé la liste des 5 concurrents autorisés par la loi, et suite au défaut de confirmation de la société {prev['Nom']}...")
-        doc.add_paragraph("La commission procède à la clôture de la procédure conformément à la réglementation en vigueur.").bold = True
-    else:
-        curr = data.iloc[idx]
-        amt_w = format_to_words_fr(curr['Montant'])
-        if pv_num == 1:
-            # (نفس منطق المحضر الأول...)
-            doc.add_paragraph(f"Le président invite la société : {curr['Nom']} (moins disant) pour {curr['Montant']} Dhs TTC.")
-        else:
-            prev = data.iloc[idx - 1]
-            doc.add_paragraph(f"La commission constate que la société {prev['Nom']} n’a pas confirmé son offre.")
-            if is_final:
-                doc.add_paragraph(f"Le président VALIDE la confirmation et ATTRIBUE le BC à la société {curr['Nom']} pour {curr['Montant']} Dhs TTC ({amt_w}).").bold = True
-
-    doc.add_paragraph(f"\nFait à Askaouen, le {reunion_date.strftime('%d/%m/%Y')}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    doc.add_paragraph(f"Le {reunion_date.strftime('%d/%m/%Y')} à {reunion_hour}, la commission d’ouverture des plis composée Comme suit :")
+    doc.add_paragraph(f"- {p_name} : Président de la commission\n- {d_name} : Directeur du service\n- {t_name} : Technicien de la commune")
     
-    # قسم التوقيعات
-    doc.add_paragraph("\nSignatures des membres :").bold = True
+    doc.add_paragraph(f"S’est réunie dans la salle de la réunion de la commune sur invitation du président concernant l’avis d’achat du bon de commande n° {num_bc} publié le : {date_pub.strftime('%d/%m/%Y')} على البوابة المغربية للصفقات العمومية، طبقاً لمقتضيات المادة 91 من المرسوم 2.22.431.")
+
+    # معالجة حالات المحاضر من 1 إلى 6
+    if pv_num == 1:
+        doc.add_paragraph("Après vérification du portail des marchés publics, les soumissionnaires sont :")
+        tab = doc.add_table(rows=1, cols=3); tab.style = 'Table Grid'
+        hdr = tab.rows[0].cells; hdr[0].text, hdr[1].text, hdr[2].text = 'Rang', 'Concurrent', 'Montant TTC'
+        for _, r in data.iterrows():
+            row = tab.add_row().cells
+            row[0].text, row[1].text, row[2].text = str(r['Rang']), r['Nom'], f"{r['Montant']} MAD"
+        
+        curr = data.iloc[0]
+        amt_w = format_to_words_fr(curr['Montant'])
+        doc.add_paragraph(f"\nLe président invite la société : {curr['Nom']} (moins disant) لتقديم تأكيد العرض في أجل 24 ساعة.")
+    
+    elif pv_num > 1:
+        prev_idx = pv_num - 2
+        prev_company = data.iloc[prev_idx]['Nom']
+        doc.add_paragraph(f"La commission constate أن الشركة {prev_company} لم تؤكد عرضها داخل الأجل القانوني.")
+        
+        if is_infructueux:
+            # إضافة خانة B.C Infructueux
+            p_inf = doc.add_paragraph("\nPAR CONSEQUENT, LA COMMISSION DECLARE QUE CE BON DE COMMANDE EST :")
+            p_inf.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            res_inf = doc.add_paragraph("INFRUCTUEUX")
+            res_inf.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            res_inf.bold = True; res_inf.runs[0].font.size = Pt(14)
+        
+        elif is_final and pv_num <= 5:
+            curr = data.iloc[pv_num-1]
+            amt_w = format_to_words_fr(curr['Montant'])
+            doc.add_paragraph(f"La commission VALIDE la confirmation de la société {curr['Nom']} et lui ATTRIBUE le bon de commande pour {curr['Montant']} Dhs TTC ({amt_w}).").bold = True
+        
+        elif pv_num < 6:
+            curr = data.iloc[pv_num-1]
+            doc.add_paragraph(f"الرئيس يستدعي المتنافس الموالي: {curr['Nom']} لتأكيد عرضه.")
+
+    # التذييل والتواقيع
+    doc.add_paragraph(f"\nFait à Askaouen, le {reunion_date.strftime('%d/%m/%Y')}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
     sig_tab = doc.add_table(rows=2, cols=3)
     sig_tab.rows[0].cells[0].text = "Le Président"; sig_tab.rows[0].cells[1].text = "Le Directeur"; sig_tab.rows[0].cells[2].text = "Le Technicien"
     sig_tab.rows[1].cells[0].text, sig_tab.rows[1].cells[1].text, sig_tab.rows[1].cells[2].text = p_name, d_name, t_name
