@@ -5,22 +5,9 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt, Cm, Inches
 from io import BytesIO
 from datetime import date
-from num2words import num2words
 
-# --- دالة التفقيط المالي بالفرنسية ---
-def format_money_fr(amount_str):
-    try:
-        val = float(str(amount_str).replace(' ', '').replace(',', ''))
-        words = num2words(int(val), lang='fr').upper()
-        cents = int(round((val - int(val)) * 100))
-        text = f"{words} DIRHAMS"
-        if cents > 0:
-            text += f" ET {num2words(cents, lang='fr').upper()} CENTIMES"
-        return text
-    except: return "________________"
-
-# --- دالة الترويسة المزدوجة ---
-def add_official_header(doc):
+# --- دالة الترويسة الرسمية ---
+def add_askaouen_header(doc):
     section = doc.sections[0]
     header = section.header
     htable = header.add_table(1, 2, Inches(6.5))
@@ -32,86 +19,77 @@ def add_official_header(doc):
 
 # --- واجهة التطبيق ---
 st.set_page_config(page_title="منصة جماعة أسكاون", layout="wide")
-st.sidebar.title("🏛️ الإدارة الرقمية")
-category = st.sidebar.radio("القسم:", ["الصفقات العمومية", "أشغال المجلس"])
+st.title("🏛️ نظام تدبير دورات المجلس - أسكاون")
 
-# ---------------------------------------------------------
-# 1. قسم الصفقات (بنمادجك الحرفية)
-# ---------------------------------------------------------
-if category == "الصفقات العمومية":
-    st.header("📦 إدارة الصفقات (BC / AO)")
-    mode = st.radio("النوع:", ["**Bon de Commande**", "**Appel d'Offres (A.O)**"], horizontal=True)
+# القائمة الجانبية
+st.sidebar.header("⚙️ إعدادات الجلسة")
+sess_type = st.sidebar.selectbox("نوع الدورة", ["العادية", "الاستثنائية"])
+sess_date = st.sidebar.text_input("التاريخ بالكامل", "الأربعاء 25 مارس 2026")
+
+# --- القسم الرئيسي: جدول الأعمال والمقررون ---
+st.subheader("📍 جدول الأعمال وتعيين المقررين")
+st.info("قم بتحديد النقاط واسم المقرر لكل نقطة بالترتيب:")
+
+# إنشاء جدول تفاعلي للنقاط والمقررين
+if 'agenda_data' not in st.session_state:
+    st.session_state.agenda_data = pd.DataFrame([
+        {"رقم النقطة": 1, "موضوع النقطة": "المصادقة على الميزانية", "اسم المقرر": "أدخل اسم المقرر الأول"},
+        {"رقم النقطة": 2, "موضوع النقطة": "تحويل اعتمادات", "اسم المقرر": ""},
+        {"رقم النقطة": 3, "موضوع النقطة": "اتفاقية شراكة", "اسم المقرر": ""}
+    ])
+
+edited_df = st.data_editor(st.session_state.agenda_data, num_rows="dynamic", use_container_width=True)
+
+# --- قسم الحضور ---
+st.divider()
+st.subheader("👥 سجل الحضور والغياب")
+col1, col2, col3 = st.columns(3)
+presents = col1.text_area("الأعضاء الحاضرون (الاسم والصفة)")
+abs_exc = col2.text_area("الغائبون بعذر")
+abs_no = col3.text_area("الغائبون بدون عذر")
+
+# --- توليد المحضر الحرفي ---
+if st.button("📄 توليد المحضر الكامل بالترتيب"):
+    doc = Document(); add_askaouen_header(doc)
     
-    action = st.selectbox("المستند المطلوب:", 
-                          ["Order de Notification", "Order de Commencement", "Les PVs"])
-
-    col1, col2 = st.columns(2)
-    ref = col1.text_input("رقم الصفقة/السند", "01/ASK/2026")
-    company = col2.text_input("اسم المقاولة", "STE EXAMPLE SARL")
-    addr = col2.text_input("عنوان الشركة", "CASABLANCA")
-    amt = col1.text_input("المبلغ TTC", "140000.00")
-    obj = st.text_area("موضوع المشروع")
-
-    if st.button(f"توليد {action}"):
-        doc = Document(); add_official_header(doc)
-        
-        if action == "Order de Notification":
-            p = doc.add_paragraph(f"\nORDRE DE SERVICE N° : {ref}\nOBJET : NOTIFICATION DE L’APPROBATION DU MARCHÉ")
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER; p.runs[0].bold = True
-            
-            doc.add_paragraph(f"\nÀ Monsieur le Directeur de l’entreprise : {company}")
-            doc.add_paragraph(f"Adresse : {addr}")
-            doc.add_paragraph(f"RÉFÉRENCES : * Marché n° : {ref}")
-            doc.add_paragraph(f"Objet du Marché : {obj}")
-            
-            doc.add_paragraph(f"\nMonsieur le Directeur,\nJ'ai l'honneur de vous notifier par la présente, l'approbation du marché n° {ref} cité en référence...")
-            doc.add_paragraph(f"Ledit marché a été approuvé... pour un montant total de {amt} DH (TTC), soit en toutes lettres : {format_money_fr(amt)}.")
-            doc.add_paragraph("\nConformément aux dispositions du décret n° 2-22-431...")
-
-        elif action == "Order de Commencement":
-            p = doc.add_paragraph(f"\nORDRE DE SERVICE DE COMMENCEMENT DES TRAVAUX N° : {ref}\n(O.S de Commencement)")
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER; p.runs[0].bold = True
-            doc.add_paragraph(f"\nÀ Monsieur le Directeur de l’entreprise : {company}")
-            doc.add_paragraph(f"OBJET : Marché n° {ref}")
-            doc.add_paragraph(f"INTITULÉ DU PROJET : {obj}")
-            doc.add_paragraph("\nMonsieur le Directeur,\nConformément aux clauses du CPS... جئت أخبركم ببدء الأشغال...")
-
-        doc.add_paragraph(f"\nFait à Askaouen, le {date.today()}\nLe Président du Conseil Communal")
-        bio = BytesIO(); doc.save(bio)
-        st.download_button("📥 تحميل المستند", bio.getvalue(), f"{action}.docx")
-
-# ---------------------------------------------------------
-# 2. قسم أشغال المجلس (نموذج المحضر الحرفي)
-# ---------------------------------------------------------
-elif category == "أشغال المجلس":
-    st.header("📝 دورات المجلس")
-    sess_type = st.selectbox("نوع الدورة", ["العادية", "الاستثنائية"])
-    sess_month = st.text_input("شهر الدورة")
-    sess_year = st.text_input("السنة", "2026")
+    # الديباجة الرسمية (نموذجك)
+    t = doc.add_paragraph(f"محضر اجتماع دورة المجلس {sess_type}")
+    t.alignment = WD_ALIGN_PARAGRAPH.CENTER; t.runs[0].bold = True
     
-    st.subheader("👥 الحضور والغياب")
-    c1, c2, c3 = st.columns(3)
-    presents = c1.text_area("الحاضرون")
-    abs_exc = c2.text_area("غائبون بعذر")
-    abs_no = c3.text_area("غائبون بدون عذر")
+    doc.add_paragraph("\nبناءً على مقتضيات القانون التنظيمي رقم 113.14 المتعلق بالجماعات...")
+    doc.add_paragraph(f"في يوم {sess_date}، عقد مجلس جماعة أسكاون دورته {sess_type}...")
     
-    points = st.text_area("جدول الأعمال (نقطة في كل سطر)")
+    # أولا: الحضور
+    doc.add_paragraph("\nأولاً: الحضور والغياب").bold = True
+    table_h = doc.add_table(rows=1, cols=3); table_h.style = 'Table Grid'
+    hdr = table_h.rows[0].cells
+    hdr[0].text = 'الحاضرون'; hdr[1].text = 'غائبون بعذر'; hdr[2].text = 'غائبون بدون عذر'
+    r = table_h.add_row().cells
+    r[0].text = presents; r[1].text = abs_exc; r[2].text = abs_no
 
-    if st.button("توليد محضر الدورة الحرفي"):
-        doc = Document(); add_official_header(doc)
-        doc.add_paragraph("الكتابة العامة").alignment = WD_ALIGN_PARAGRAPH.CENTER
-        t = doc.add_paragraph(f"محضر اجتماع دورة المجلس {sess_type}\nلشهر {sess_month} سنة {sess_year}")
-        t.alignment = WD_ALIGN_PARAGRAPH.CENTER; t.runs[0].bold = True
+    # ثانيا: جدول الأعمال والمقررون
+    doc.add_paragraph("\nثانياً: جدول الأعمال والمداولات").bold = True
+    
+    for index, row in edited_df.iterrows():
+        point_title = row['موضوع النقطة']
+        rapporteur = row['اسم المقرر']
         
-        doc.add_paragraph("\nبناءً على مقتضيات القانون التنظيمي رقم 113.14 المتعلق بالجماعات...")
-        doc.add_paragraph("أولاً: الحضور والغياب").bold = True
-        # (هنا يتم دمج جدول الحضور الذي أرسلته)
+        # تنسيق كل نقطة مع مقررها
+        p = doc.add_paragraph()
+        p.add_run(f"النقطة {row['رقم النقطة']}: {point_title}").bold = True
         
-        doc.add_paragraph("\nثانياً: جدول الأعمال").bold = True
-        for p in points.split('\n'): doc.add_paragraph(f"- {p}")
-        
-        doc.add_paragraph("\nثالثاً: المداولات والقرارات").bold = True
-        doc.add_paragraph("صادق المجلس بالإجماع/الأغلبية...")
-        
-        bio = BytesIO(); doc.save(bio)
-        st.download_button("📥 تحميل المحضر", bio.getvalue(), "PV_Session.docx")
+        doc.add_paragraph(f"العرض: قدم السيد(ة) {rapporteur}، بصفته مقرراً لهذه النقطة، عرضاً مفصلاً حول الموضوع...")
+        doc.add_paragraph("المناقشة: بعد فتح باب التدخلات، أبدى الأعضاء ملاحظاتهم حول...")
+        doc.add_paragraph("التصويت: صادق المجلس بالإجماع/الأغلبية على هذه النقطة.\n")
+
+    # الخاتمة
+    doc.add_paragraph("\nرابعاً: ختام الجلسة").bold = True
+    doc.add_paragraph("رفعت الجلسة بتلاوة برقية الولاء والإخلاص المرفوعة إلى السدة العالية بالله...")
+    
+    doc.add_paragraph(f"\nحُرر بأسكاون في: {date.today()}")
+    
+    bio = BytesIO(); doc.save(bio)
+    st.download_button("📥 تحميل المحضر المنسق", bio.getvalue(), "PV_Askaouen_Final.docx")
+
+st.sidebar.divider()
+st.sidebar.info("تنسيق خاص بمدير مصالح جماعة أسكاون")
