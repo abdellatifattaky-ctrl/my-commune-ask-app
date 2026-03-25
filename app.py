@@ -21,6 +21,7 @@ def format_to_words_fr(amount_str):
 
 st.set_page_config(page_title="Commune Askaouen - Système PV", layout="wide")
 
+# القائمة الجانبية
 st.sidebar.header("Membres de la Commission")
 p_name = st.sidebar.text_input("Président", "MOHAMED ZILALI")
 d_name = st.sidebar.text_input("Directeur du service", "M BAREK BAK")
@@ -31,10 +32,11 @@ st.title("🏛️ نظام استخراج المحاضر - جماعة أسكاو
 with st.expander("📝 Détails Administratifs", expanded=True):
     c1, c2 = st.columns(2)
     num_bc = c1.text_input("N° BC", "01/ASK/2026")
-    date_pub = c2.date_input("Date de publication", date(2025, 3, 25))
-    obj_bc = st.text_area("Objet", "Achat de matériel...")
+    date_pub = c2.date_input("Date de publication", date(2026, 3, 25))
+    obj_bc = st.text_area("Objet", "Achat de fournitures...")
 
-st.subheader("📊 Liste des concurrents (Max 5)")
+# بيانات المتنافسين
+st.subheader("📊 Liste des concurrents")
 df_init = pd.DataFrame([
     {"Rang": 1, "Nom": "STE OUBRAIM SARL", "Montant": "69840.00"},
     {"Rang": 2, "Nom": "DECO GRC", "Montant": "93120.00"},
@@ -50,23 +52,24 @@ pv_num = c_pv1.selectbox("Numéro du PV:", [1, 2, 3, 4, 5, 6])
 reunion_date = c_pv3.date_input("Date de la séance", date.today())
 reunion_hour = st.text_input("Heure", "10h00mn")
 
-# خيارات المحضر السادس والمحاضر الأخرى
-is_final_attr = False
+# إدارة حالة المحضر السادس والمحاضر الأخرى
 is_infructueux = False
+is_final_attr = False
 
 if pv_num == 6:
-    status_6 = st.radio("Résultat du 6éme PV:", ["Attribution Finale (إسناد)", "BC Infructueux (غير مثمر)"])
-    if status_6 == "Attribution Finale (إسناد)": is_final_attr = True
-    else: is_infructueux = True
+    res_6 = st.radio("Résultat du 6éme PV:", ["Attribution (إسناد الشركة 5)", "B.C Infructueux (غير مثمر)"])
+    if res_6 == "B.C Infructueux (غير مثمر)": is_infructueux = True
+    else: is_final_attr = True
 else:
     is_final_attr = c_pv2.checkbox("✅ Est-ce le PV d'attribution finale ?")
 
-if st.button("🚀 إنشاء المحضر"):
+if st.button("🚀 إنشاء المحضر النهائي المنسق"):
     doc = Document()
     section = doc.sections[0]
     section.top_margin, section.bottom_margin = Cm(2), Cm(2)
     section.left_margin, section.right_margin = Cm(2.5), Cm(2)
 
+    # الترويسة
     header = section.header
     htable = header.add_table(1, 2, Inches(6.5))
     htable.rows[0].cells[0].paragraphs[0].text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nCOMMUNE D'ASKAOUN"
@@ -74,48 +77,63 @@ if st.button("🚀 إنشاء المحضر"):
     htable.rows[0].cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
     doc.add_paragraph("\n")
-    doc.add_heading(f"{pv_num}éme Procès verbal", 1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title = doc.add_heading(f"{pv_num}éme Procès verbal", 1)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph("De la commission d’ouverture des plis\nProcédure Bon de commande").alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     doc.add_paragraph(f"Objet : {obj_bc}").bold = True
-    doc.add_paragraph(f"Le {reunion_date.strftime('%d/%m/%Y')} à {reunion_hour}, la commission composée comme suit :")
-    doc.add_paragraph(f"- M. {p_name} : Président\n- M. {d_name} : Directeur\n- M. {t_name} : Technicien")
+    doc.add_paragraph(f"Le {reunion_date.strftime('%d/%m/%Y')} à {reunion_hour}, la commission d’ouverture des plis composée comme suit :")
+    doc.add_paragraph(f"- M. {p_name} : Président de la commission\n- M. {d_name} : Directeur du service\n- M. {t_name} : Technicien de la commune")
     
-    doc.add_paragraph(f"S’est réunie pour l'avis d'achat n° {num_bc} publié le {date_pub.strftime('%d/%m/%Y')}, conformément à l'article 91 du décret n° 2-22-431.")
+    doc.add_paragraph(f"S’est réunie dans la salle de réunion de la commune sur invitation du président concernant l’avis d’achat du bon de commande n° {num_bc} publié le : {date_pub.strftime('%d/%m/%Y')} sur le portail des marchés publics, en application des dispositions de l’article 91 du décret n° 2-22-431 (8 mars 2023) relatif aux marchés publics, ayant pour objet : {obj_bc}")
 
     if pv_num == 1:
-        doc.add_paragraph("Après vérification du portail, les soumissionnaires sont :")
+        doc.add_paragraph("Après vérification du portail des marchés publics, les soumissionnaires qui ont déposé leurs offres de prix électroniquement sont :")
         tab = doc.add_table(rows=1, cols=3); tab.style = 'Table Grid'
         hdr = tab.rows[0].cells; hdr[0].text, hdr[1].text, hdr[2].text = 'Rang', 'Concurrent', 'Montant TTC'
         for _, r in data.iterrows():
             row = tab.add_row().cells
             row[0].text, row[1].text, row[2].text = str(r['Rang']), r['Nom'], f"{r['Montant']} MAD"
-        
+        doc.add_paragraph("\nFormat papier : Néant.")
         curr = data.iloc[0]
-        doc.add_paragraph(f"\nLe président invite la société : {curr['Nom']} à confirmer son offre.")
+        amt_w = format_to_words_fr(curr['Montant'])
+        doc.add_paragraph(f"Le président de la commission invite la société : {curr['Nom']} est le moins disant pour un montant de {curr['Montant']} Dhs TTC ({amt_w}) à confirmer son offre, et suspend la séance.")
     
     else:
-        # المحاضر من 2 إلى 6
-        idx = pv_num - 1 if pv_num <= 5 else 4 # في المحضر 6 نتعامل مع الشركة 5
-        prev_company = data.iloc[idx-1]['Nom']
-        doc.add_paragraph(f"La commission constate que la société {prev_company} n’a pas confirmé son offre par lettre de confirmation.")
+        # المحاضر من 2 إلى 6 (نفس النص الموحد)
+        idx = pv_num - 1 if pv_num <= 5 else 4
+        prev_idx = idx - 1
+        prev_company = data.iloc[prev_idx]['Nom']
+        doc.add_paragraph(f"Après vérification du portail des marchés publics, la commission constate que la société {prev_company} n’a pas confirmé son offre par lettre de confirmation.")
         
         if is_infructueux:
-            doc.add_paragraph("Considérant qu'aucun des concurrents n'a confirmé son offre dans les délais impartis.")
-            p_res = doc.add_paragraph("\nPAR CONSEQUENT, LA COMMISSION DECLARE QUE CE BON DE COMMANDE EST :")
-            p_res.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            # صياغة محضر Infructueux
+            doc.add_paragraph("Considérant qu'aucun des concurrents invités n'a confirmé son offre dans les délais impartis.")
+            p_inf = doc.add_paragraph("\nPAR CONSEQUENT, LA COMMISSION DECLARE QUE CE BON DE COMMANDE EST :")
+            p_inf.alignment = WD_ALIGN_PARAGRAPH.CENTER
             res_inf = doc.add_paragraph("INFRUCTUEUX")
             res_inf.alignment = WD_ALIGN_PARAGRAPH.CENTER
             res_inf.bold = True; res_inf.runs[0].font.size = Pt(16)
         
         elif is_final_attr:
+            # صياغة الإسناد (نسخ نفس منطق المحضر 5 في المحضر 6)
             curr = data.iloc[idx]
             amt_w = format_to_words_fr(curr['Montant'])
             doc.add_paragraph(f"La commission constate que la société : {curr['Nom']} a confirmé son offre par lettre de confirmation.")
             p_res = doc.add_paragraph(f"Le président VALIDE la confirmation et ATTRIBUE le bon de commande à la société {curr['Nom']} pour un montant de : {curr['Montant']} Dhs TTC ({amt_w}).")
             p_res.bold = True
+        
+        else:
+            # دعوة المتنافس الموالي
+            curr = data.iloc[idx]
+            amt_w = format_to_words_fr(curr['Montant'])
+            doc.add_paragraph(f"Après écartement de la société {prev_company}, le président invite la société : {curr['Nom']} qui est classé le {pv_num}éme pour un montant de {curr['Montant']} Dhs TTC ({amt_w}) à confirmer son offre.")
 
+    # التذييل (نفس تاريخ المحضر)
     doc.add_paragraph(f"\nFait à Askaouen, le {reunion_date.strftime('%d/%m/%Y')}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+    # التواقيع
+    doc.add_paragraph("Signatures des membres de la commission :").bold = True
     sig_tab = doc.add_table(rows=2, cols=3)
     sig_tab.rows[0].cells[0].text = "Le Président"; sig_tab.rows[0].cells[1].text = "Le Directeur"; sig_tab.rows[0].cells[2].text = "Le Technicien"
     sig_tab.rows[1].cells[0].text, sig_tab.rows[1].cells[1].text, sig_tab.rows[1].cells[2].text = p_name, d_name, t_name
