@@ -6,7 +6,7 @@ from docx.shared import Pt, Inches
 from io import BytesIO
 from datetime import date
 
-# --- 1. تنسيق الترويسة الرسمية ---
+# --- 1. الترويسة الرسمية ---
 def add_askaouen_header(doc):
     section = doc.sections[0]
     header = section.header
@@ -18,16 +18,16 @@ def add_askaouen_header(doc):
     c_fr.text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nPROVINCE DE TAROUDANT\nCOMMUNE D'ASKAOUN"
     c_fr.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
-# --- 2. إعدادات الواجهة (RTL) ---
+# --- 2. إعدادات الواجهة ---
 st.set_page_config(page_title="منظومة تدبير محاضر الدورات", layout="wide")
 st.markdown("""<style> .main { direction: rtl; text-align: right; } </style>""", unsafe_allow_html=True)
 
 if 'members_list' not in st.session_state:
-    st.session_state.members_list = ["العضو 1", "العضو 2"]
+    st.session_state.members_list = ["العضو 1", "العضو 2", "العضو 3"]
 
 st.title("🏛️ النظام المعلوماتي لتدوين وقائع جلسات المجلس")
 
-tab1, tab2 = st.tabs(["📝 تحرير محضر الدورة", "👥 تحيين لائحة أعضاء المجلس"])
+tab1, tab2 = st.tabs(["📝 تحرير محضر الدورة", "👥 إدارة أعضاء المجلس"])
 
 with tab2:
     st.subheader("⚙️ إدارة الهيئة الناخبة للمجلس")
@@ -39,7 +39,6 @@ with tab2:
 
 with tab1:
     st.subheader("📍 ضبط وقائع الجلسة")
-    
     col_info, col_attendance = st.columns([1, 2])
     
     with col_info:
@@ -65,72 +64,43 @@ with tab1:
     vote_choices = ["صادق المجلس بالإجماع", "صادق المجلس بالأغلبية", "قرر المجلس تأجيل البت في النقطة"]
     
     if 'agenda_data' not in st.session_state:
-        st.session_state.agenda_data = [{"النقطة": "موضوع النقطة الأولى", "المقرر": "", "القرار": "صادق المجلس بالإجماع", "ملخص_المناقشة": ""}]
+        st.session_state.agenda_data = pd.DataFrame([{"النقطة": "موضوع النقطة الأولى", "المقرر": "", "النتيجة": "صادق المجلس بالإجماع", "ملخص_المناقشة": ""}])
 
-    final_agenda = st.data_editor(pd.DataFrame(st.session_state.agenda_data), num_rows="dynamic", use_container_width=True,
-                                 column_config={"القرار": st.column_config.SelectboxColumn("مآل النقطة", options=vote_choices),
-                                               "ملخص_المناقشة": st.column_config.TextColumn("خلاصة المداولة (اختياري)")})
+    final_agenda = st.data_editor(st.session_state.agenda_data, num_rows="dynamic", use_container_width=True,
+                                 column_config={"النتيجة": st.column_config.SelectboxColumn("مآل النقطة", options=vote_choices)})
 
-    # --- توليد المحضر بأسلوب إداري رفيع ---
+    # --- 3. توليد المحضر (تم تصحيح الأخطاء البرمجية هنا) ---
     if st.button("📄 توليد المحضر الرسمي النهائي"):
-        doc = Document(); add_askaouen_header(doc)
-        
-        # تنسيق الفقرات
-        def set_arabic_style(p, bold=False, size=12):
-            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            run = p.runs[0]
-            run.bold = bold
-            run.font.size = Pt(size)
-            run.font.name = 'Arial'
-
-        # العنوان الرئيسي
-        t = doc.add_paragraph(f"محضر اجتماع دورة المجلس الجماعي لأسكاون\nالدورة {sess_kind} برسم شهر {sess_month}")
-        t.alignment = WD_ALIGN_PARAGRAPH.CENTER; t.runs[0].bold = True; t.runs[0].font.size = Pt(14)
-
-        doc.add_paragraph("\nبناءً على الظهير الشريف رقم 1.15.85 الصادر في 20 من رمضان 1436 (7 يوليو 2015) بتنفيذ القانون التنظيمي رقم 113.14 المتعلق بالجماعات.")
-        
-        doc.add_paragraph(f"وعملاً بمقتضيات النظام الداخلي للمجلس الجماعي لأسكاون، انعقدت بقاعة الاجتماعات بمقر الجماعة، يوم {sess_date} على الساعة العاشرة صباحاً، جلسة عمومية في إطار الدورة {sess_kind}، وذلك تحت رئاسة السيد {pres_name}، وبحضور السيد {auth_name} بصفته ممثلاً للسلطة المحلية.")
-
-        doc.add_paragraph("\nأولاً: الحضور والغياب والنصاب القانوني").bold = True
-        doc.add_paragraph(f"في مستهل الجلسة، تفضل السيد الرئيس بالترحيب بكافة السادة الأعضاء وبالسيد ممثل السلطة المحلية، معلناً بعد ذلك عن توفر النصاب القانوني لمداولة المجلس بشكل صحيح، طبقاً للمادة 42 من القانون التنظيمي 113.14، حيث سجل ما يلي:")
-        
-        doc.add_paragraph(f"• السادة الأعضاء الحاضرون ({len(presents)}): ").bold = True
-        doc.add_paragraph("، ".join(presents))
-        
-        if excused:
-            doc.add_paragraph(f"• السادة الأعضاء الغائبون بعذر ({len(excused)}): ").bold = True
-            doc.add_paragraph("، ".join(excused))
-        
-        if absents:
-            doc.add_paragraph(f"• السادة الأعضاء الغائبون بدون عذر ({len(absents)}): ").bold = True
-            doc.add_paragraph("، ".join(absents))
-
-        doc.add_paragraph(f"\nوقد عُهد بمهمة كتابة الجلسة وتدوين وقائعها للسيد {sec_name} بصفته كاتباً للمجلس.")
-
-        doc.add_paragraph("\nثانياً: جدول الأعمال وعرض النقاط").bold = True
-        doc.add_paragraph("انتقل المجلس بعد ذلك لتدارس النقاط المدرجة في جدول أعمال هذه الدورة، وهي كالتالي:")
-        for idx, row in final_agenda.iterrows():
-            doc.add_paragraph(f"{idx+1}. {row['النقطة']}")
-
-        doc.add_paragraph("\nثالثاً: تفاصيل المداولات والقرارات المتخذة").bold = True
-        for idx, row in final_agenda.iterrows():
-            p = doc.add_paragraph()
-            p.add_run(f"النقطة {idx+1}: {row['النقطة']}").bold = True
+        try:
+            doc = Document(); add_askaouen_header(doc)
             
-            doc.add_paragraph(f"استهلت مناقشة هذه النقطة بعرض قدمه السيد(ة) {row['المقرر']}، استعرض فيه السياق العام للموضوع وأهدافه التنموية.")
-            
-            if row['ملخص_المناقشة']:
-                doc.add_paragraph(f"وعقب ذلك، فُتح باب المناقشة حيث سجل السادة الأعضاء الملاحظات التالية: {row['ملخص_المناقشة']}")
-            else:
-                doc.add_paragraph("وبعد مناقشة مستفيضة وعميقة شارك فيها السادة الأعضاء بإبداء ملاحظاتهم وتوصياتهم، تبين للمجلس أهمية المصادقة على هذا المقترح.")
-            
-            doc.add_paragraph(f"وعند عرض النقطة للتصويت العلني، {row['قرار']}.\n")
+            # العنوان
+            t = doc.add_paragraph(f"محضر اجتماع دورة المجلس الجماعي لأسكاون\nالدورة {sess_kind} برسم شهر {sess_month}")
+            t.alignment = WD_ALIGN_PARAGRAPH.CENTER; t.runs[0].bold = True
 
-        doc.add_paragraph("\nرابعاً: ختام الجلسة").bold = True
-        doc.add_paragraph("وبعد استنفاذ كافة النقط المدرجة بجدول الأعمال، اختتمت الجلسة في جو من المسؤولية والتعاون، حيث تلا السيد كاتب المجلس برقية الولاء والإخلاص المرفوعة للسدة العالية بالله جلالة الملك محمد السادس نصره الله وأيده، والتمس فيها من الله عز وجل أن يحفظ جلالته والأسرة الملكية الشريفة.")
-        
-        doc.add_paragraph(f"\nحُرر بأسكاون في: {date.today()}")
-        doc.add_paragraph("توقيع كاتب المجلس:                          توقيع رئيس المجلس:").bold = True
+            doc.add_paragraph("\nبناءً على القانون التنظيمي رقم 113.14 المتعلق بالجماعات.")
+            doc.add_paragraph(f"انعقدت بقاعة الاجتماعات بمقر الجماعة، يوم {sess_date}، جلسة عمومية تحت رئاسة السيد {pres_name}، وبحضور السيد {auth_name} بصفته ممثلاً للسلطة المحلية.")
 
-        bio = BytesIO(); doc.save(bio)
-        st.download_button("📥 تحميل المحضر الإداري الرفيع", bio.getvalue(), "PV_Official_Askaouen.docx")
+            doc.add_paragraph("\nأولاً: الحضور والغياب").bold = True
+            doc.add_paragraph(f"• الحاضرون ({len(presents)}): " + "، ".join(presents))
+            if excused: doc.add_paragraph(f"• الغائبون بعذر ({len(excused)}): " + "، ".join(excused))
+            if absents: doc.add_paragraph(f"• الغائبون بدون عذر ({len(absents)}): " + "، ".join(absents))
+
+            doc.add_paragraph("\nثانياً: المداولات والقرارات المتخذة").bold = True
+            for idx, row in final_agenda.iterrows():
+                doc.add_paragraph(f"النقطة {idx+1}: {row['النقطة']}").bold = True
+                doc.add_paragraph(f"العرض: قدم السيد(ة) {row['المقرر']} عرضاً حول الموضوع.")
+                if row['ملخص_المناقشة']:
+                    doc.add_paragraph(f"المناقشة: {row['ملخص_المناقشة']}")
+                doc.add_paragraph(f"القرار: {row['النتيجة']}.\n")
+
+            doc.add_paragraph("\nرابعاً: ختام الجلسة").bold = True
+            doc.add_paragraph("اختتمت الجلسة بتلاوة برقية الولاء والإخلاص المرفوعة للسدة العالية بالله جلالة الملك محمد السادس نصره الله وأيده.")
+            
+            doc.add_paragraph(f"\nحُرر بأسكاون في: {date.today()}")
+
+            bio = BytesIO(); doc.save(bio)
+            st.download_button("📥 اضغط هنا لتحميل المحضر (Word)", bio.getvalue(), "PV_Official_Askaouen.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            st.success("تم تجهيز المحضر بنجاح!")
+        except Exception as e:
+            st.error(f"حدث خطأ أثناء التوليد: {e}")
