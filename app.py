@@ -7,26 +7,8 @@ from io import BytesIO
 from datetime import date, timedelta
 from num2words import num2words
 
-# --- الإعدادات البصرية (Lacoste Style) ---
-st.set_page_config(page_title="Askaouen Pro - Final Version", layout="wide")
-
-st.markdown("""
-    <style>
-    .stApp { background-color: #fcfcfc; }
-    h1, h2, h3 { color: #004526 !important; font-family: 'Arial'; }
-    .stButton>button {
-        background-color: #004526;
-        color: white;
-        border-radius: 25px;
-        font-weight: bold;
-        border: 2px solid #004526;
-    }
-    .stButton>button:hover {
-        background-color: white;
-        color: #004526;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+# --- 1. الإعدادات والوظائف المساعدة ---
+st.set_page_config(page_title="Askaouen Pro - Control Panel", layout="wide")
 
 def format_to_words_fr(amount_str):
     try:
@@ -39,26 +21,33 @@ def format_to_words_fr(amount_str):
         return text
     except: return "________________"
 
-# --- الواجهة الرئيسية ---
-st.title("🏛️ منظومة تدبير سندات الطلب الذكية")
-st.subheader("جماعة أسكاون - إقليم تارودانت")
+# --- 2. نصوص المحاضر (القوالب الثابتة) - غيرها من هنا كما تريد ---
+txt_header_fr = "De la commission d’ouverture des plis\nProcédure Bon de commande"
+txt_loi_art91 = "la commission s'est réunie conformément à l'article 91 du décret n° 2-22-431."
+
+# جملة التعليق والاستدعاء (تعدل هنا مرة واحدة لتتغير في كل الكود)
+txt_suspendre = "et suspend la séance et fixe un rendez-vous le {next_date} ou sur invitation."
+
+# جملة الإسناد النهائي
+txt_attribution_finale = "Le président VALIDE la confirmation et ATTRIBUE le bon de commande à la société {nom_ste} pour un montant de : {montant} Dhs TTC ({montant_lettres})."
+
+# جملة استبعاد الشركة السابقة
+txt_ecartement = "Après vérification du portail des marchés publics, la commission constate que la société {prev_ste} n’a pas confirmé son offre par lettre de confirmation."
+
+# --- 3. واجهة المستخدم ---
+st.title("🏛️ لوحة التحكم في نصوص المحاضر - جماعة أسكاون")
 
 with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Coat_of_arms_of_Morocco.svg/1200px-Coat_of_arms_of_Morocco.svg.png", width=80)
-    st.header("اللجنة الإدارية")
-    p_name = st.text_input("الرئيس", "MOHAMED ZILALI")
-    d_name = st.text_input("مدير المصالح", "M BAREK BAK")
-    t_name = st.text_input("التقني", "ABDELLATIF ATTAKY")
+    st.header("👤 أعضاء اللجنة")
+    p_name = st.text_input("Président", "MOHAMED ZILALI")
+    d_name = st.text_input("Directeur", "M BAREK BAK")
+    t_name = st.text_input("Technicien", "ABDELLATIF ATTAKY")
 
-# معطيات السند
-with st.expander("📝 تفاصيل سند الطلب (Bon de Commande)", expanded=True):
-    c1, c2 = st.columns(2)
-    num_bc = c1.text_input("رقم السند", "01/ASK/2026")
-    date_pub = c2.date_input("تاريخ النشر بالبوابة", date(2026, 3, 25))
-    obj_bc = st.text_area("موضوع السند", "Achat de fournitures...")
+with st.expander("📝 معلومات سند الطلب", expanded=True):
+    col1, col2 = st.columns(2)
+    num_bc = col1.text_input("N° BC", "01/ASK/2026")
+    obj_bc = st.text_area("Objet", "Achat de fournitures...")
 
-# جدول المتنافسين
-st.info("💡 أدخل الشركات حسب ترتيب مبالغها (من الأقل إلى الأكثر)")
 data = st.data_editor(pd.DataFrame([
     {"Rang": 1, "Nom": "STE OUBRAIM SARL", "Montant": "69840.00"},
     {"Rang": 2, "Nom": "DECO GRC", "Montant": "93120.00"},
@@ -69,87 +58,57 @@ data = st.data_editor(pd.DataFrame([
 
 st.divider()
 
-# --- منطق اختيار المحضر والنتيجة ---
 col_v1, col_v2, col_v3 = st.columns(3)
-pv_num = col_v1.selectbox("رقم المحضر الحالي:", [1, 2, 3, 4, 5, 6])
+pv_num = col_v1.selectbox("رقم المحضر:", [1, 2, 3, 4, 5, 6])
 reunion_date = col_v2.date_input("تاريخ الجلسة", date.today())
 
-is_final_attr = False
-is_infructueux = False
-
+is_final = False
 if pv_num == 6:
-    res_6 = st.radio("نتيجة المحضر السادس:", ["إسناد نهائي (Attribution)", "غير مثمر (Infructueux)"])
-    is_final_attr = (res_6 == "إسناد نهائي (Attribution)")
-    is_infructueux = not is_final_attr
+    res_6 = st.radio("النتيجة:", ["Attribution", "Infructueux"])
+    is_final = (res_6 == "Attribution")
 else:
-    # الميزة الجديدة: أي محضر يمكن أن يكون نهائياً
-    is_final_attr = st.checkbox(f"✅ هل أكدت الشركة رقم {pv_num} عرضها؟ (إسناد نهائي)")
-    if not is_final_attr:
-        next_date = col_v3.date_input("موعد الجلسة القادمة", date.today() + timedelta(days=1))
+    is_final = st.checkbox(f"✅ إسناد نهائي للشركة رقم {pv_num}")
+    if not is_final:
+        next_dt = col_v3.date_input("موعد الجلسة القادمة", date.today() + timedelta(days=1))
 
-if st.button("🚀 توليد المحضر المنسق"):
+# --- 4. معالج المستند ---
+if st.button("🚀 إنشاء المستند"):
     doc = Document()
-    # (إعدادات الهوامش والترويسة...)
+    # (الترويسة...)
     section = doc.sections[0]
-    section.top_margin = Cm(1.5)
-    
     header = section.header
-    htable = header.add_table(1, 2, Inches(6.5))
-    htable.rows[0].cells[0].text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nCOMMUNE D'ASKAOUN"
-    htable.rows[0].cells[1].text = "المملكة المغربية\nوزارة الداخلية\nجماعة أسكاون"
-    htable.rows[0].cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    ht = header.add_table(1, 2, Inches(6.5))
+    ht.rows[0].cells[0].text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nCOMMUNE D'ASKAOUN"
+    ht.rows[0].cells[1].text = "المملكة المغربية\nوزارة الداخلية\nجماعة أسكاون"
+    ht.rows[0].cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-    # العنوان
-    doc.add_paragraph("\n")
-    title = doc.add_heading(f"{pv_num}éme Procès verbal", 1)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph("De la commission d’ouverture des plis\nProcédure Bon de commande").alignment = WD_ALIGN_PARAGRAPH.CENTER
-
+    doc.add_heading(f"{pv_num}éme Procès verbal", 1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph(txt_header_fr).alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph(f"Objet : {obj_bc}").bold = True
-    doc.add_paragraph(f"Le {reunion_date.strftime('%d/%m/%Y')} à 10h00mn, la commission s'est réunie conformément à l'article 91 du décret n° 2-22-431.")
+    doc.add_paragraph(f"Le {reunion_date.strftime('%d/%m/%Y')} à 10h00mn, {txt_loi_art91}")
 
-    idx = pv_num - 1 # ترتيب الشركة الحالية
-    
+    idx = pv_num - 1
+    curr = data.iloc[idx]
+    amt_words = format_to_words_fr(curr['Montant'])
+
     if pv_num == 1:
-        doc.add_paragraph("Après vérification du portail des marchés publics, les soumissionnaires sont :")
-        # (جدول المتنافسين...)
-        curr = data.iloc[0]
-        amt_w = format_to_words_fr(curr['Montant'])
-        p = doc.add_paragraph(f"Le président invite la société : {curr['Nom']} (moins disant) pour {curr['Montant']} Dhs TTC ({amt_w}) à confirmer son offre, ")
-        p.add_run(f"et suspend la séance et fixe un rendez-vous le {next_date.strftime('%d/%m/%Y')} ou sur invitation.").bold = True
-    
+        p = doc.add_paragraph(f"Le président invite la société : {curr['Nom']} (moins disant) pour {curr['Montant']} Dhs TTC ({amt_words}) à confirmer son offre, ")
+        p.add_run(txt_suspendre.format(next_date=next_dt.strftime('%d/%m/%Y'))).bold = True
     else:
-        # المحاضر من 2 إلى 6
-        prev_company = data.iloc[idx-1]['Nom']
-        doc.add_paragraph(f"La commission constate que la société {prev_company} n’a pas confirmé son offre par lettre de confirmation.")
+        prev_ste = data.iloc[idx-1]['Nom']
+        doc.add_paragraph(txt_ecartement.format(prev_ste=prev_ste))
         
-        if is_infructueux:
-            doc.add_paragraph("\nPAR CONSEQUENT, LA COMMISSION DECLARE QUE CE BON DE COMMANDE EST :")
-            res_p = doc.add_paragraph("INFRUCTUEUX")
-            res_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            res_p.bold = True
-        
-        elif is_final_attr:
-            # تطبيق نموذج الإسناد النهائي (نسخة المحضر 6)
-            curr = data.iloc[idx]
-            amt_w = format_to_words_fr(curr['Montant'])
-            doc.add_paragraph(f"La commission constate que la société {curr['Nom']} a confirmé son offre par lettre de confirmation.")
-            p_res = doc.add_paragraph(f"Le président VALIDE la confirmation et ATTRIBUE le bon de commande à la société {curr['Nom']} pour un montant de : {curr['Montant']} Dhs TTC ({amt_w}).")
+        if is_final:
+            doc.add_paragraph(f"La commission constate que la société {curr['Nom']} a confirmé son offre.")
+            p_res = doc.add_paragraph(txt_attribution_finale.format(nom_ste=curr['Nom'], montant=curr['Montant'], montant_lettres=amt_words))
             p_res.bold = True
-        
         else:
-            # استمرار المسطرة للمنافس الموالي
-            curr = data.iloc[idx]
-            amt_w = format_to_words_fr(curr['Montant'])
-            p = doc.add_paragraph(f"Après écartement de la société {prev_company}, le président invite la société : {curr['Nom']} ({pv_num}éme rang) pour {curr['Montant']} Dhs TTC ({amt_w}) à confirmer son offre, ")
-            p.add_run(f"et suspend la séance et fixe un rendez-vous le {next_date.strftime('%d/%m/%Y')} ou sur invitation.").bold = True
+            p = doc.add_paragraph(f"Le président invite la société : {curr['Nom']} ({pv_num}éme rang) pour {curr['Montant']} Dhs TTC ({amt_words}) à confirmer son offre, ")
+            p.add_run(txt_suspendre.format(next_date=next_dt.strftime('%d/%m/%Y'))).bold = True
 
     # التوقيعات
     doc.add_paragraph(f"\nFait à Askaouen, le {reunion_date.strftime('%d/%m/%Y')}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    sig_tab = doc.add_table(rows=2, cols=3)
-    sig_tab.rows[0].cells[0].text = "Le Président"; sig_tab.rows[0].cells[1].text = "Le Directeur"; sig_tab.rows[0].cells[2].text = "Le Technicien"
-    sig_tab.rows[1].cells[0].text, sig_tab.rows[1].cells[1].text, sig_tab.rows[1].cells[2].text = p_name, d_name, t_name
-
+    
     bio = BytesIO()
     doc.save(bio)
-    st.download_button(f"📥 تحميل المحضر رقم {pv_num}", bio.getvalue(), f"PV_{pv_num}_Askaouen.docx")
+    st.download_button(f"📥 تحميل المحضر {pv_num}", bio.getvalue(), f"PV_{pv_num}.docx")
