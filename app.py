@@ -2,160 +2,126 @@ import streamlit as st
 import pandas as pd
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt, Inches, RGBColor
+from docx.shared import Inches, Pt, Cm
 from io import BytesIO
 from datetime import date
+from num2words import num2words
 
-# --- 1. ترويسة رسمية مفصلة ---
-def add_askaouen_header(doc):
+def format_to_words_fr(amount_str):
+    try:
+        val = float(str(amount_str).replace(' ', '').replace(',', ''))
+        words = num2words(val, lang='fr').upper()
+        cents = int(round((val - int(val)) * 100))
+        text = f"{words} DIRHAMS"
+        if cents > 0:
+            text += f" ET {num2words(cents, lang='fr').upper()} CENTIMES"
+        else: text += " ,00CTS"
+        return text
+    except: return "______"
+
+st.set_page_config(page_title="Commune Askaouen - Système PV", layout="wide")
+
+# القائمة الجانبية
+st.sidebar.header("Membres de la Commission")
+p_name = st.sidebar.text_input("Président", "MOHAMED ZILALI")
+d_name = st.sidebar.text_input("Directeur du service", "M BAREK BAK")
+t_name = st.sidebar.text_input("Technicien", "ABDELLATIF ATTAKY")
+
+st.title("🏛️ نظام استخراج المحاضر - جماعة أسكاون")
+
+with st.expander("📝 Détails Administratifs", expanded=True):
+    c1, c2 = st.columns(2)
+    num_bc = c1.text_input("N° BC", "01/ASK/2025")
+    date_pub = c2.date_input("Date de publication", date(2025, 3, 25))
+    obj_bc = st.text_area("Objet", "Location d’une Tractopelle pour les travaux divers.")
+
+# بيانات المتنافسين
+st.subheader("📊 Liste des concurrents")
+df_init = pd.DataFrame([
+    {"Rang": 1, "Nom": "STE OUBRAIM SARL", "Montant": "69840.00"},
+    {"Rang": 2, "Nom": "DECO GRC", "Montant": "93120.00"},
+    {"Rang": 3, "Nom": "AIT MOUMOU REALISATION", "Montant": "102432.00"},
+    {"Rang": 4, "Nom": "KADEM SARL", "Montant": "111744.00"},
+    {"Rang": 5, "Nom": "TOUZANI 2ZD", "Montant": "114072.00"}
+])
+data = st.data_editor(df_init, use_container_width=True)
+
+pv_num = st.selectbox("Numéro du PV:", [1, 2, 3, 4, 5])
+is_final = st.checkbox("✅ Est-ce le PV d'attribution finale ?")
+reunion_date = st.date_input("Date de la séance", date.today())
+reunion_hour = st.text_input("Heure", "10h00mn")
+next_rdv = st.date_input("Prochain RDV / Invitation")
+
+if st.button("🚀 إنشاء المحضر النهائي المنسق"):
+    doc = Document()
     section = doc.sections[0]
+    section.top_margin, section.bottom_margin = Cm(2), Cm(2)
+    section.left_margin, section.right_margin = Cm(2.5), Cm(2)
+
+    # الترويسة المقلوبة (العربية يمين، الفرنسية يسار)
     header = section.header
-    htable = header.add_table(1, 2, Inches(7.0))
-    # اليمين (عربي) - الكتابة الرسمية
-    c_ar = htable.rows[0].cells[1].paragraphs[0]
-    c_ar.text = "المملكة المغربية\nوزارة الداخلية\nإقليم تارودانت\nدائرة تاليون\nجماعة أسكاون\nالكتابة العامة"
-    c_ar.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    # اليسار (فرنسي)
-    c_fr = htable.rows[0].cells[0].paragraphs[0]
-    c_fr.text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nPROVINCE DE TAROUDANT\nCOMMUNE D'ASKAOUN"
-    c_fr.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    htable = header.add_table(1, 2, Inches(6.5))
+    # الخلية اليسرى (الفرنسية)
+    c_left = htable.rows[0].cells[0].paragraphs[0]
+    c_left.text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nCOMMUNE D'ASKAOUN"
+    c_left.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    # الخلية اليمنى (العربية)
+    c_right = htable.rows[0].cells[1].paragraphs[0]
+    c_right.text = "المملكة المغربية\nوزارة الداخلية\nجماعة أسكاون"
+    c_right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-# --- 2. واجهة الإدارة (RTL) ---
-st.set_page_config(page_title="منظومة تسيير دورات أسكاون", layout="wide")
-st.markdown("""<style> .main { direction: rtl; text-align: right; } </style>""", unsafe_allow_html=True)
+    # العناوين
+    doc.add_paragraph("\n")
+    title = doc.add_heading(f"{pv_num}éme Procès verbal", 1)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph("De la commission d’ouverture des plis\nProcédure Bon de commande").alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-if 'members_list' not in st.session_state:
-    st.session_state.members_list = ["السيد(ة) العضو الأول", "السيد(ة) العضو الثاني"]
-
-st.title("🏛️ منصة صياغة المحاضر الكبرى والتقارير المالية")
-
-tab1, tab2 = st.tabs(["📝 تحرير المحضر التفصيلي", "👥 قاعدة بيانات المجلس"])
-
-with tab2:
-    st.subheader("⚙️ إدارة أعضاء المجلس الجماعي")
-    all_names = st.text_area("أدخل اللائحة (اسم في كل سطر):", value="\n".join(st.session_state.members_list), height=200)
-    if st.button("حفظ اللائحة"):
-        st.session_state.members_list = [n.strip() for n in all_names.split('\n') if n.strip()]
-        st.success("تم التحيين.")
-
-with tab1:
-    # معلومات الجلسة
-    col_info, col_attendance = st.columns([1, 2])
-    with col_info:
-        sess_kind = st.selectbox("نوع الدورة", ["العادية", "الاستثنائية"])
-        sess_month = st.text_input("برسم شهر/سنة", "مارس 2026")
-        sess_date = st.text_input("تاريخ الدورة", "الأربعاء 25 مارس 2026")
-        pres_name = st.text_input("رئيس المجلس", "أدخل الاسم")
-        auth_name = st.text_input("ممثل السلطة", "السيد القائد")
-        sec_name = st.text_input("كاتب المجلس", "أدخل الاسم")
-
-    with col_attendance:
-        st.write("✅ **حالة الحضور والغياب**")
-        attendance_df = pd.DataFrame({"اسم العضو": st.session_state.members_list, "الوضعية": ["حاضر"] * len(st.session_state.members_list)})
-        edited_attendance = st.data_editor(attendance_df, use_container_width=True)
-
-    presents = edited_attendance[edited_attendance["الوضعية"] == "حاضر"]["اسم العضو"].tolist()
-    excused = edited_attendance[edited_attendance["الوضعية"] == "غائب بعذر"]["اسم العضو"].tolist()
-    absents = edited_attendance[edited_attendance["الوضعية"] == "غائب بدون عذر"]["اسم العضو"].tolist()
-
-    st.divider()
-    st.subheader("📊 تفاصيل النقط المدرجة (المناقشات والبيانات المالية)")
+    # النص الأساسي
+    doc.add_paragraph(f"Objet : {obj_bc}").bold = True
+    doc.add_paragraph(f"Le {reunion_date.strftime('%d/%m/%Y')} à {reunion_hour}, la commission d’ouverture des plis composée Comme suit :")
+    doc.add_paragraph(f"- {p_name} : Président de la commission\n- {d_name} : Directeur du service\n- {t_name} : Technicien de la commune")
     
-    # هيكل البيانات لزيادة عدد الصفحات
-    if 'agenda_data' not in st.session_state:
-        st.session_state.agenda_data = pd.DataFrame([
-            {
-                "النقطة": "المصادقة على تحويل اعتمادات بميزانية التسيير", 
-                "المقرر": "رئيس لجنة الميزانية", 
-                "تقرير_اللجنة": "تلاوة التقرير المفصل للجنة المالية الذي أكد على ضرورة تحويل مبلغ (...) لتغطية مصاريف (...)", 
-                "المناقشة_الموسعة": "عرفت القاعة نقاشاً حاداً حول أوجه الصرف، حيث تساءل العضو فلان عن الجدوى من هذا التحويل، ليرد السيد الرئيس موضحاً أن...", 
-                "بيانات_مالية": "البرنامج 10: 50.000 درهم | المشروع 20: 30.000 درهم",
-                "القرار": "صادق المجلس بالإجماع"
-            }
-        ])
+    p_loi = doc.add_paragraph(f"S’est réunie dans la salle de la réunion de la commune sur invitation du président de la commission d’ouverture des plis concernant l’avis d’achat du bon de commande n° {num_bc} publié le : {date_pub.strftime('%d/%m/%Y')} sur le portail des marchés publics, en application des dispositions de l’article 91 du décret n° 2-22-431 ( 8 mars 2023 ) relatif aux marchés publics, ayant pour objet : {obj_bc}")
+    p_loi.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
-    final_agenda = st.data_editor(st.session_state.agenda_data, num_rows="dynamic", use_container_width=True)
+    idx = pv_num - 1
+    curr = data.iloc[idx]
+    amt_w = format_to_words_fr(curr['Montant'])
 
-    # --- محرك التوليد "الطويل" ---
-    if st.button("📄 توليد المحضر الإداري المطول (Word)"):
-        doc = Document()
-        # تنسيق الفقرة للعربية
-        def write_ar(text, bold=False, size=12, align='right'):
-            p = doc.add_paragraph()
-            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if align == 'right' else WD_ALIGN_PARAGRAPH.CENTER
-            run = p.add_run(text)
-            run.font.name = 'Arial'
-            run.font.size = Pt(size)
-            run.bold = bold
-            return p
-
-        add_askaouen_header(doc)
-
-        # ديباجة المحضر (الصفحة 1)
-        write_ar("محضر اجتماع دورة المجلس الجماعي لأسكاون", bold=True, size=16, align='center')
-        write_ar(f"الدورة {sess_kind} لبرسم شهر {sess_month}", bold=True, size=14, align='center')
+    if pv_num == 1:
+        doc.add_paragraph("Après vérification du portail des marchés publics, les soumissionnaires qui ont déposés leurs offres de prix électroniquement sont :")
+        tab = doc.add_table(rows=1, cols=3); tab.style = 'Table Grid'
+        hdr = tab.rows[0].cells; hdr[0].text, hdr[1].text, hdr[2].text = 'Rang', 'Concurrent', 'Montant TTC'
+        for _, r in data.iterrows():
+            row = tab.add_row().cells
+            row[0].text, row[1].text, row[2].text = str(r['Rang']), r['Nom'], f"{r['Montant']} MAD"
         
-        write_ar("\nبناء على مقتضيات القانون التنظيمي رقم 113.14 المتعلق بالجماعات الصادر بتنفيذه الظهير الشريف رقم 1.15.85 بتاريخ 20 من رمضان 1436 (7 يوليو 2015)؛")
-        write_ar("وبناء على مقتضيات النظام الداخلي للمجلس الجماعي لأسكاون الذي يحدد كيفيات تسيير أشغال المجلس وتدوين محاضر الجلسات؛")
+        doc.add_paragraph("\nFormat papier : Néant.")
+        doc.add_paragraph(f"Le président de la commission d’ouverture des plis invite la société : {curr['Nom']} est le moins disant pour un montant de {curr['Montant']} Dhs TTC ({amt_w}) à confirmer son offre, et suspend la séance et fixe un rendez-vous le {next_rdv.strftime('%d/%m/%Y')} ou sur invitation.")
+    else:
+        prev = data.iloc[idx - 1]
+        doc.add_paragraph(f"Après vérification du portail des marchés publics, la commission d’ouverture des plis constate que la société {prev['Nom']} n’a pas confirmé son offre par lettre de confirmation.")
         
-        write_ar(f"\nفي يوم {sess_date}، على الساعة العاشرة صباحاً، انعقدت بقاعة الاجتماعات بمقر الجماعة جلسة عمومية في إطار الدورة {sess_kind}، ترأس أشغالها السيد {pres_name} رئيس المجلس، وبحضور السيد {auth_name} ممثلاً للسلطة المحلية.")
+        if is_final:
+            doc.add_paragraph(f"Après vérification du portail des marchés publics, la commission constate que la société : {curr['Nom']} a confirmé son offre par lettre de confirmation.")
+            p_res = doc.add_paragraph(f"Le président de la commission VALIDE la confirmation et ATTRIBUE le bon de commande à la société {curr['Nom']} pour un montant de : {curr['Montant']} Dhs TTC ({amt_w}).")
+            p_res.bold = True
+        else:
+            doc.add_paragraph(f"Après écartement de la société {prev['Nom']} le président invite la société : {curr['Nom']} qui est classé le {pv_num}éme pour un montant de {curr['Montant']} Dhs TTC ({amt_w}) à confirmer son offre le {next_rdv.strftime('%d/%m/%Y')} ou sur invitation.")
 
-        write_ar("\nأولاً: التحقق من النصاب القانوني", bold=True, size=13)
-        write_ar(f"افتتح السيد الرئيس الجلسة بكلمة ترحيبية، وبعد التأكد من توفر النصاب القانوني طبقاً للمادة 42 من القانون التنظيمي (حضور {len(presents)} أعضاء من أصل {len(st.session_state.members_list)})، أعلن عن انطلاق المداولات.")
-        
-        # تفصيل الحضور
-        write_ar("قائمة الأعضاء الحاضرين:", bold=True)
-        write_ar("، ".join(presents), size=11)
+    # التاريخ على اليمين
+    p_date = doc.add_paragraph(f"\nAskaouen le {reunion_date.strftime('%d/%m/%Y')}")
+    p_date.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-        # جدول الأعمال (الصفحة 2)
-        doc.add_page_break()
-        write_ar("\nثانياً: جدول أعمال الدورة", bold=True, size=13)
-        for idx, row in final_agenda.iterrows():
-            write_ar(f"النقطة {idx+1}: {row['النقطة']}")
+    # قسم التوقيعات
+    doc.add_paragraph("Signatures des membres de la commission :").bold = True
+    sig_tab = doc.add_table(rows=2, cols=3)
+    sig_tab.width = Inches(6.5)
+    sig_tab.rows[0].cells[0].text = "Le Président"; sig_tab.rows[0].cells[1].text = "Le Directeur"; sig_tab.rows[0].cells[2].text = "Le Technicien"
+    sig_tab.rows[1].cells[0].text = p_name; sig_tab.rows[1].cells[1].text = d_name; sig_tab.rows[1].cells[2].text = t_name
+    for row in sig_tab.rows:
+        for cell in row.cells: cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        # المداولات (الصفحات 3 إلى 7)
-        doc.add_page_break()
-        write_ar("\nثالثاً: تفاصيل المداولات والقرارات المتخذة", bold=True, size=13)
-        
-        for idx, row in final_agenda.iterrows():
-            write_ar(f"دراسة ومناقشة النقطة {idx+1}: {row['النقطة']}", bold=True, size=12)
-            
-            # عرض التقرير
-            write_ar("1. عرض تقرير اللجنة المختصة:", bold=True)
-            write_ar(str(row['تقرير_اللجنة']), size=11)
-            
-            # البيانات المالية (إذا وجدت)
-            if row['بيانات_مالية']:
-                write_ar("2. المعطيات المالية والتقنية المرتبطة بالنقطة:", bold=True)
-                # إنشاء جدول داخل الـ Word لزيادة الطول والاحترافية
-                table = doc.add_table(rows=1, cols=2)
-                table.style = 'Table Grid'
-                hdr_cells = table.rows[0].cells
-                hdr_cells[0].text = 'البيان / المشروع'
-                hdr_cells[1].text = 'المعطيات المالية (درهم)'
-                # إضافة البيانات
-                for item in str(row['بيانات_مالية']).split('|'):
-                    row_cells = table.add_row().cells
-                    parts = item.split(':')
-                    if len(parts) == 2:
-                        row_cells[0].text = parts[0].strip()
-                        row_cells[1].text = parts[1].strip()
-
-            # المناقشة
-            write_ar("\n3. ملخص المناقشة والمداخلات:", bold=True)
-            write_ar(str(row['المناقشة_الموسعة']), size=11)
-            
-            # التصويت
-            write_ar(f"النتيجة النهائية: وبعد عرض النقطة للتصويت العلني، {row['القرار']}.\n")
-            doc.add_paragraph("-" * 80).alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        # الختام
-        doc.add_page_break()
-        write_ar("\nرابعاً: ختام أشغال الدورة وبرقية الولاء", bold=True, size=13)
-        write_ar(f"واختتمت الدورة بتلاوة برقية الولاء والإخلاص المرفوعة إلى السدة العالية بالله جلالة الملك محمد السادس نصره الله، والتي تلاها السيد {sec_name} بصفته كاتباً للمجلس.")
-
-        write_ar(f"\nحُرر بأسكاون في: {date.today()}", align='center')
-        write_ar("\nتوقيع كاتب المجلس                          توقيع رئيس المجلس", bold=True)
-
-        bio = BytesIO(); doc.save(bio)
-        st.download_button("📥 تحميل المحضر الإداري والمالي المطول", bio.getvalue(), "PV_Askaouen_Full_Report.docx")
+    bio = BytesIO()
+    doc.save(bio)
+    st.download_button("📥 تحميل المحضر المنسق والجاهز", bio.getvalue(), f"PV_{pv_num}_Askaouen.docx")
