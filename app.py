@@ -7,6 +7,7 @@ from io import BytesIO
 from datetime import date
 from num2words import num2words
 
+# Fonction de conversion des montants en lettres (FR)
 def format_to_words_fr(amount_str):
     try:
         val = float(str(amount_str).replace(' ', '').replace(',', ''))
@@ -21,7 +22,7 @@ def format_to_words_fr(amount_str):
 
 st.set_page_config(page_title="Commune Askaouen - Système PV", layout="wide")
 
-# القائمة الجانبية
+# Sidebar pour les membres
 st.sidebar.header("Membres de la Commission")
 p_name = st.sidebar.text_input("Président", "MOHAMED ZILALI")
 d_name = st.sidebar.text_input("Directeur du service", "M BAREK BAK")
@@ -32,10 +33,10 @@ st.title("🏛️ نظام استخراج المحاضر - جماعة أسكاو
 with st.expander("📝 Détails Administratifs", expanded=True):
     c1, c2 = st.columns(2)
     num_bc = c1.text_input("N° BC", "01/ASK/2026")
-    date_pub = c2.date_input("Date de publication", date(2026, 3, 25))
+    date_pub = c2.date_input("Date de publication", date(2025, 3, 25))
     obj_bc = st.text_area("Objet", "Location d’une Tractopelle pour les travaux divers.")
 
-# بيانات المتنافسين (5 شركات كحد أقصى)
+# Liste des concurrents (Max 5)
 st.subheader("📊 Liste des concurrents")
 df_init = pd.DataFrame([
     {"Rang": 1, "Nom": "STE OUBRAIM SARL", "Montant": "69840.00"},
@@ -49,77 +50,82 @@ data = st.data_editor(df_init, use_container_width=True)
 st.divider()
 c_pv1, c_pv2, c_pv3 = st.columns(3)
 pv_num = c_pv1.selectbox("Numéro du PV:", [1, 2, 3, 4, 5, 6])
-is_final = c_pv2.checkbox("✅ Est-ce le PV d'attribution finale ?")
-# خيار إعلان السند غير مثمر (خاص بالمحضر 6 غالباً)
-is_infructueux = st.checkbox("❌ B.C Infructueux (سند طلب غير مثمر)")
+is_final = c_pv2.checkbox("✅ PV d'attribution finale")
+is_infructueux = st.checkbox("❌ BC INFRUCTUEUX")
 
 reunion_date = c_pv3.date_input("Date de la séance", date.today())
 reunion_hour = st.text_input("Heure", "10h00mn")
 next_rdv = st.date_input("Prochain RDV / Invitation")
 
-if st.button("🚀 إنشاء المحضر المنسق"):
+if st.button("🚀 Générer le Procès Verbal"):
     doc = Document()
     section = doc.sections[0]
     section.top_margin, section.bottom_margin = Cm(2), Cm(2)
     section.left_margin, section.right_margin = Cm(2.5), Cm(2)
 
-    # الترويسة
+    # Header bilingue (Seul endroit avec arabe selon l'entête officielle)
     header = section.header
     htable = header.add_table(1, 2, Inches(6.5))
-    htable.rows[0].cells[0].paragraphs[0].text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nCOMMUNE D'ASKAOUN"
-    htable.rows[0].cells[1].paragraphs[0].text = "المملكة المغربية\nوزارة الداخلية\nجماعة أسكاون"
-    htable.rows[0].cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    c_left = htable.rows[0].cells[0].paragraphs[0]
+    c_left.text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nCOMMUNE D'ASKAOUN"
+    c_left.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    c_right = htable.rows[0].cells[1].paragraphs[0]
+    c_right.text = "المملكة المغربية\nوزارة الداخلية\nجماعة أسكاون"
+    c_right.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-    # العناوين
     doc.add_paragraph("\n")
     title = doc.add_heading(f"{pv_num}éme Procès verbal", 1)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph("De la commission d’ouverture des plis\nProcédure Bon de commande").alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    # النص الأساسي (نفس النص لكل المحاضر)
+    # Corps du texte en Français intégral
     doc.add_paragraph(f"Objet : {obj_bc}").bold = True
-    doc.add_paragraph(f"Le {reunion_date.strftime('%d/%m/%Y')} à {reunion_hour}, la commission d’ouverture des plis composée Comme suit :")
-    doc.add_paragraph(f"- {p_name} : Président de la commission\n- {d_name} : Directeur du service\n- {t_name} : Technicien de la commune")
+    doc.add_paragraph(f"Le {reunion_date.strftime('%d/%m/%Y')} à {reunion_hour}, la commission d’ouverture des plis composée comme suit :")
+    doc.add_paragraph(f"- M. {p_name} : Président de la commission\n- M. {d_name} : Directeur du service\n- M. {t_name} : Technicien de la commune")
     
-    doc.add_paragraph(f"S’est réunie dans la salle de la réunion de la commune sur invitation du président concernant l’avis d’achat du bon de commande n° {num_bc} publié le : {date_pub.strftime('%d/%m/%Y')} على البوابة المغربية للصفقات العمومية، طبقاً لمقتضيات المادة 91 من المرسوم 2.22.431.")
+    p_loi = doc.add_paragraph(f"S’est réunie dans la salle de réunion de la commune sur invitation du président concernant l’avis d’achat du bon de commande n° {num_bc} publié le : {date_pub.strftime('%d/%m/%Y')} sur le portail des marchés publics, en application des dispositions de l’article 91 du décret n° 2-22-431 (8 mars 2023) relatif aux marchés publics, ayant pour objet : {obj_bc}")
+    p_loi.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
-    # معالجة حالات المحاضر من 1 إلى 6
-    if pv_num == 1:
-        doc.add_paragraph("Après vérification du portail des marchés publics, les soumissionnaires sont :")
-        tab = doc.add_table(rows=1, cols=3); tab.style = 'Table Grid'
-        hdr = tab.rows[0].cells; hdr[0].text, hdr[1].text, hdr[2].text = 'Rang', 'Concurrent', 'Montant TTC'
-        for _, r in data.iterrows():
-            row = tab.add_row().cells
-            row[0].text, row[1].text, row[2].text = str(r['Rang']), r['Nom'], f"{r['Montant']} MAD"
-        
-        curr = data.iloc[0]
+    idx = pv_num - 1
+    if idx < len(data):
+        curr = data.iloc[idx]
         amt_w = format_to_words_fr(curr['Montant'])
-        doc.add_paragraph(f"\nLe président invite la société : {curr['Nom']} (moins disant) لتقديم تأكيد العرض في أجل 24 ساعة.")
-    
-    elif pv_num > 1:
-        prev_idx = pv_num - 2
-        prev_company = data.iloc[prev_idx]['Nom']
-        doc.add_paragraph(f"La commission constate أن الشركة {prev_company} لم تؤكد عرضها داخل الأجل القانوني.")
-        
-        if is_infructueux:
-            # إضافة خانة B.C Infructueux
-            p_inf = doc.add_paragraph("\nPAR CONSEQUENT, LA COMMISSION DECLARE QUE CE BON DE COMMANDE EST :")
-            p_inf.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            res_inf = doc.add_paragraph("INFRUCTUEUX")
-            res_inf.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            res_inf.bold = True; res_inf.runs[0].font.size = Pt(14)
-        
-        elif is_final and pv_num <= 5:
-            curr = data.iloc[pv_num-1]
-            amt_w = format_to_words_fr(curr['Montant'])
-            doc.add_paragraph(f"La commission VALIDE la confirmation de la société {curr['Nom']} et lui ATTRIBUE le bon de commande pour {curr['Montant']} Dhs TTC ({amt_w}).").bold = True
-        
-        elif pv_num < 6:
-            curr = data.iloc[pv_num-1]
-            doc.add_paragraph(f"الرئيس يستدعي المتنافس الموالي: {curr['Nom']} لتأكيد عرضه.")
 
-    # التذييل والتواقيع
+        if pv_num == 1:
+            doc.add_paragraph("Après vérification du portail des marchés publics, les soumissionnaires qui ont déposé leurs offres de prix électroniquement sont :")
+            tab = doc.add_table(rows=1, cols=3); tab.style = 'Table Grid'
+            hdr = tab.rows[0].cells; hdr[0].text, hdr[1].text, hdr[2].text = 'Rang', 'Concurrent', 'Montant TTC'
+            for _, r in data.iterrows():
+                row = tab.add_row().cells
+                row[0].text, row[1].text, row[2].text = str(r['Rang']), r['Nom'], f"{r['Montant']} MAD"
+            
+            doc.add_paragraph("\nFormat papier : Néant.")
+            doc.add_paragraph(f"Le président de la commission invite la société : {curr['Nom']} (moins disant) pour un montant de {curr['Montant']} Dhs TTC ({amt_w}) à confirmer son offre, suspend la séance et fixe un rendez-vous le {next_rdv.strftime('%d/%m/%Y')} ou sur invitation.")
+        
+        else:
+            prev = data.iloc[idx - 1]
+            doc.add_paragraph(f"Après vérification du portail des marchés publics, la commission constate que la société {prev['Nom']} n’a pas confirmé son offre par lettre de confirmation.")
+            
+            if is_infructueux:
+                p_inf = doc.add_paragraph("\nPAR CONSEQUENT, LA COMMISSION DECLARE QUE CE BON DE COMMANDE EST :")
+                p_inf.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                res_inf = doc.add_paragraph("INFRUCTUEUX")
+                res_inf.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                res_inf.bold = True; res_inf.runs[0].font.size = Pt(16)
+            
+            elif is_final:
+                doc.add_paragraph(f"La commission constate que la société : {curr['Nom']} a confirmé son offre par lettre de confirmation.")
+                p_res = doc.add_paragraph(f"Le président VALIDE la confirmation et ATTRIBUE le bon de commande à la société {curr['Nom']} pour un montant de : {curr['Montant']} Dhs TTC ({amt_w}).")
+                p_res.bold = True
+            
+            else:
+                doc.add_paragraph(f"Après écartement de la société {prev['Nom']}, le président invite la société : {curr['Nom']} ({pv_num}éme rang) pour un montant de {curr['Montant']} Dhs TTC ({amt_w}) à confirmer son offre le {next_rdv.strftime('%d/%m/%Y')} ou sur invitation.")
+
+    # Footer
     doc.add_paragraph(f"\nFait à Askaouen, le {reunion_date.strftime('%d/%m/%Y')}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+    # Signatures
+    doc.add_paragraph("\nSignatures des membres de la commission :").bold = True
     sig_tab = doc.add_table(rows=2, cols=3)
     sig_tab.rows[0].cells[0].text = "Le Président"; sig_tab.rows[0].cells[1].text = "Le Directeur"; sig_tab.rows[0].cells[2].text = "Le Technicien"
     sig_tab.rows[1].cells[0].text, sig_tab.rows[1].cells[1].text, sig_tab.rows[1].cells[2].text = p_name, d_name, t_name
@@ -127,4 +133,4 @@ if st.button("🚀 إنشاء المحضر المنسق"):
         for c in r.cells: c.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     bio = BytesIO(); doc.save(bio)
-    st.download_button(f"📥 تحميل المحضر رقم {pv_num}", bio.getvalue(), f"PV_{pv_num}_Askaouen.docx")
+    st.download_button(f"📥 Télécharger PV {pv_num}", bio.getvalue(), f"PV_{pv_num}_Askaouen.docx")
