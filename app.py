@@ -1,143 +1,164 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-from datetime import date
+from datetime import date, datetime, timedelta
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from io import BytesIO
 
-# --- 1. إعدادات المنصة وقاعدة البيانات ---
-st.set_page_config(page_title="منظومة جماعة أسكاون الرقمية", layout="wide")
+# --- 1. الإعدادات القانونية والتقنية ---
+st.set_page_config(page_title="منظومة جماعة أسكاون الرقمية 2026", layout="wide")
 
-conn = sqlite3.connect('askaouen_full_system.db', check_same_thread=False)
+MAX_BC_LIMIT = 500000  # سقف 50 مليون سنتيم حسب طلب مدير المصالح
+LAW_NOTICE_DAYS = 15   # أجل استدعاء أعضاء المجلس (المادة 35)
+
+# الاتصال بقاعدة البيانات
+conn = sqlite3.connect('askaouen_integrated_system.db', check_same_thread=False)
 c = conn.cursor()
 
-# إنشاء جميع الجداول الضرورية
+# إنشاء الجداول القانونية
 c.execute('CREATE TABLE IF NOT EXISTS budget (type TEXT, item TEXT, amount REAL, date TEXT)')
-c.execute('CREATE TABLE IF NOT EXISTS staff (name TEXT, grade TEXT, status TEXT)')
+c.execute('CREATE TABLE IF NOT EXISTS members (name TEXT, district TEXT, phone TEXT)')
+c.execute('CREATE TABLE IF NOT EXISTS properties (name TEXT, type TEXT, status TEXT, rent REAL)')
+c.execute('CREATE TABLE IF NOT EXISTS legal_cases (ref TEXT, opponent TEXT, court TEXT, status TEXT)')
 c.execute('CREATE TABLE IF NOT EXISTS permits (type TEXT, requester TEXT, status TEXT, date TEXT)')
-c.execute('CREATE TABLE IF NOT EXISTS sessions (type TEXT, s_date TEXT, agenda TEXT)')
-c.execute('CREATE TABLE IF NOT EXISTS fuel (vehicle TEXT, liters REAL, driver TEXT, date TEXT)')
 conn.commit()
 
-# --- 2. نظام الصلاحيات والدخول ---
+# --- 2. نظام الدخول والصلاحيات ---
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
-    st.session_state['user_role'] = None
+    st.session_state['role'] = None
 
-def check_login(user, pwd):
-    users = {
-        "admin_askaoun": {"pwd": "DM_2026", "role": "مدير المصالح"},
-        "tech_urban": {"pwd": "Askaoun@Tech", "role": "مصلحة التعمير"},
-        "fin_service": {"pwd": "Askaoun@Fin", "role": "المصلحة المالية"},
-        "staff_office": {"pwd": "Askaoun@RH", "role": "مصلحة الموظفين"}
-    }
-    if user in users and users[user]["pwd"] == pwd:
-        st.session_state['logged_in'] = True
-        st.session_state['user_role'] = users[user]["role"]
-        return True
-    return False
+def login_system():
+    if not st.session_state['logged_in']:
+        st.title("🏛️ بوابة الإدارة الرقمية - جماعة أسكاون")
+        st.subheader("الامتثال للقوانين المغربية: 113.14 | 57.19 | مرسوم صفقات 2023")
+        with st.form("login_gate"):
+            u = st.text_input("اسم المستخدم")
+            p = st.text_input("كلمة المرور", type="password")
+            if st.form_submit_button("دخول آمن"):
+                users = {
+                    "admin_askaoun": {"pwd": "DM_2026", "role": "مدير المصالح"},
+                    "tech_urban": {"pwd": "Askaoun@Tech", "role": "التعمير"},
+                    "fin_service": {"pwd": "Askaoun@Fin", "role": "المالية"}
+                }
+                if u in users and users[u]["pwd"] == p:
+                    st.session_state['logged_in'] = True
+                    st.session_state['role'] = users[u]["role"]
+                    st.rerun()
+                else: st.error("خطأ في بيانات الدخول")
+        st.stop()
 
-# واجهة تسجيل الدخول
-if not st.session_state['logged_in']:
-    st.title("🏛️ بوابة الإدارة الرقمية - جماعة أسكاون")
-    with st.form("login"):
-        u = st.text_input("اسم المستخدم")
-        p = st.text_input("كلمة المرور", type="password")
-        if st.form_submit_button("دخول"):
-            if check_login(u, p): st.rerun()
-            else: st.error("خطأ في البيانات")
-    st.stop()
+login_system()
 
-# --- 3. القائمة الجانبية وتوزيع الصلاحيات ---
-role = st.session_state['user_role']
+# --- 3. واجهة التحكم الرئيسية ---
+role = st.session_state['role']
 st.sidebar.title(f"👤 {role}")
-
-all_menus = {
-    "مدير المصالح": ["📊 الميزانية", "🏛️ أشغال المجلس", "🏠 التعمير", "🏗️ الصفقات", "👥 الموظفين", "⛽ المحروقات"],
-    "مصلحة التعمير": ["🏠 التعمير", "🏗️ الصفقات"],
-    "المصلحة المالية": ["📊 الميزانية", "⛽ المحروقات"],
-    "مصلحة الموظفين": ["👥 الموظفين"]
-}
-
-menu = st.sidebar.radio("الانتقال إلى:", all_menus.get(role, []))
 if st.sidebar.button("تسجيل الخروج"):
     st.session_state['logged_in'] = False
     st.rerun()
 
-# --- 4. محتوى الوحدات الإدارية ---
+menu = st.sidebar.radio("المصالح الإدارية:", [
+    "📑 الصفقات وسندات الطلب (50M)",
+    "⚖️ شؤون المجلس والاستدعاءات",
+    "🏠 الأملاك الجماعية والجبايات",
+    "⚖️ المنازعات القضائية",
+    "👥 الموارد البشرية",
+    "🏠 التعمير والرخص"
+])
 
-# مصلحة الميزانية والمالية
-if menu == "📊 الميزانية":
-    st.header("📊 تتبع التوازن المالي للجماعة")
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        with st.form("b_form"):
-            b_type = st.selectbox("النوع", ["مداخيل", "مصاريف"])
-            b_item = st.text_input("البيان")
-            b_amt = st.number_input("المبلغ", min_value=0.0)
-            if st.form_submit_button("حفظ"):
-                c.execute("INSERT INTO budget VALUES (?,?,?,?)", (b_type, b_item, b_amt, str(date.today())))
-                conn.commit()
-    with col2:
-        df_b = pd.read_sql_query("SELECT * FROM budget", conn)
-        if not df_b.empty:
-            rev = df_b[df_b['type']=='مداخيل']['amount'].sum()
-            exp = df_b[df_b['type']=='مصاريف']['amount'].sum()
-            st.metric("الفائض الحالي", f"{rev-exp:,.2f} DH")
-            st.dataframe(df_b.tail(5), use_container_width=True)
+# --- 4. الوظائف والمصالح ---
 
-# مصلحة التعمير والرخص
-elif menu == "🏠 التعمير":
-    st.header("🏠 تدبير الرخص والتعمير")
-    with st.form("p_form"):
-        req = st.text_input("صاحب الطلب")
-        p_type = st.selectbox("الرخصة", ["بناء", "سكن", "ربط"])
-        if st.form_submit_button("تسجيل الطلب"):
-            c.execute("INSERT INTO permits VALUES (?,?,'قيد الدراسة',?)", (p_type, req, str(date.today())))
-            conn.commit()
+# أ. مصلحة الصفقات (مرسوم مارس 2023)
+if menu == "📑 الصفقات وسندات الطلب (50M)":
+    st.header("📑 تدبير الطلبيات العمومية (مرسوم 8 مارس 2023)")
+    st.info(f"💡 السقف المعتمد لسندات الطلب (BC): {MAX_BC_LIMIT:,} درهم")
     
-    st.subheader("تحميل رخصة تجريبية")
-    if st.button("توليد ملف Word"):
-        doc = Document()
-        doc.add_heading(f"Autorisation de : {p_type}", 0)
-        doc.add_paragraph(f"Demandeur : {req}\nDate : {date.today()}\nCommune Askaoun")
-        bio = BytesIO(); doc.save(bio)
-        st.download_button("📥 تحميل الرخصة", bio.getvalue(), "Permit.docx")
+    with st.form("bc_form"):
+        col1, col2 = st.columns(2)
+        obj = col1.text_input("موضوع الطلبية")
+        amt = col2.number_input("المبلغ (TTC)", min_value=0.0)
+        vendor = st.text_input("المورد المقترح (بعد استشارة 3 منافسين)")
+        
+        if st.form_submit_button("حفظ وتوليد السند"):
+            if amt > MAX_BC_LIMIT:
+                st.error("⚠️ خرق قانوني: المبلغ يتجاوز سقف 50 مليون سنتيم!")
+            else:
+                st.success("✅ العملية مطابقة للمادة 91 من مرسوم الصفقات.")
+                # توليد مستند Word
+                doc = Document()
+                doc.add_heading('BON DE COMMANDE (BC)', 0)
+                doc.add_paragraph(f"Conformément au décret n° 2-22-431 du 8 mars 2023.")
+                doc.add_paragraph(f"Objet: {obj}\nMontant: {amt} DH\nFournisseur: {vendor}")
+                bio = BytesIO(); doc.save(bio)
+                st.download_button("📥 تحميل سند الطلب جاهز", bio.getvalue(), "BC_Askaoun.docx")
 
-# مصلحة أشغال المجلس
-elif menu == "🏛️ أشغال المجلس":
-    st.header("🏛️ الدورات والمقررات")
-    with st.form("s_form"):
-        s_type = st.selectbox("الدورة", ["عادية", "استثنائية"])
-        s_date = st.date_input("التاريخ")
-        agenda = st.text_area("جدول الأعمال")
-        if st.form_submit_button("برمجة"):
-            c.execute("INSERT INTO sessions VALUES (?,?,?)", (s_type, str(s_date), agenda))
+# ب. شؤون المجلس والاستدعاءات (قانون 113.14)
+elif menu == "⚖️ شؤون المجلس والاستدعاءات":
+    st.header("⚖️ تدبير دورات المجلس (المادة 35)")
+    tab1, tab2 = st.tabs(["📧 إرسال الاستدعاءات", "📜 سجل المقررات"])
+    
+    with tab1:
+        with st.form("conv"):
+            s_type = st.selectbox("نوع الدورة", ["عادية فبراير", "عادية ماي", "عادية أكتوبر", "استثنائية"])
+            s_date = st.date_input("تاريخ الانعقاد")
+            agenda = st.text_area("جدول الأعمال")
+            if st.form_submit_button("تجهيز الاستدعاء الرسمي"):
+                diff = (s_date - date.today()).days
+                if "عادية" in s_type and diff < LAW_NOTICE_DAYS:
+                    st.warning(f"⚠️ المادة 35: الأجل المتبقي ({diff} يوم) أقل من 15 يوماً القانونية!")
+                
+                doc = Document()
+                p = doc.add_paragraph("المملكة المغربية - وزارة الداخلية\nجماعة أسكاون")
+                p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                doc.add_heading('إستدعاء لحضور دورة المجلس', 1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+                doc.add_paragraph(f"بناءً على المادة 35 من القانون التنظيمي 113.14...")
+                doc.add_paragraph(f"يدعوكم رئيس الجماعة لحضور {s_type} يوم {s_date}")
+                doc.add_paragraph(f"جدول الأعمال: {agenda}")
+                bio = BytesIO(); doc.save(bio)
+                st.download_button("📥 تحميل الاستدعاء (Docx)", bio.getvalue(), "Convocation.docx")
+
+# ج. الأملاك الجماعية (قانون 57.19)
+elif menu == "🏠 الأملاك الجماعية والجبايات":
+    st.header("🏠 تدبير الأملاك العقارية (Loi 57.19)")
+    with st.expander("➕ تسجيل ملك جماعي جديد (سجل المحتويات)"):
+        with st.form("prop"):
+            name = st.text_input("اسم العقار")
+            t = st.selectbox("النوع", ["دكان كراء", "بقعة أرضية", "مرفق عمومي"])
+            rent = st.number_input("السومة الكرائية شهرياً", min_value=0.0)
+            if st.form_submit_button("حفظ"):
+                c.execute("INSERT INTO properties VALUES (?, ?, 'محفظ', ?)", (name, t, rent))
+                conn.commit()
+    df_p = pd.read_sql_query("SELECT * FROM properties", conn)
+    st.dataframe(df_p, use_container_width=True)
+
+# د. المنازعات القضائية
+elif menu == "⚖️ المنازعات القضائية":
+    st.header("⚖️ تتبع القضايا بالمحاكم الإدارية")
+    st.warning("تنبيه: تتبع المنازعات يحمي ميزانية الجماعة من الاقتطاعات المفاجئة.")
+    with st.form("lawsuit"):
+        ref = st.text_input("رقم الملف")
+        opp = st.text_input("الطرف الخصم")
+        court = st.selectbox("المحكمة", ["إدارية أكادير", "استئنافية مراكش", "محكمة النقض"])
+        if st.form_submit_button("تسجيل القضية"):
+            c.execute("INSERT INTO legal_cases VALUES (?, ?, ?, 'في طور التقاضي')", (ref, opp, court))
             conn.commit()
-    df_s = pd.read_sql_query("SELECT * FROM sessions", conn)
-    st.table(df_s)
+    df_l = pd.read_sql_query("SELECT * FROM legal_cases", conn)
+    st.table(df_l)
 
-# مصلحة الصفقات والمحاضر
-elif menu == "🏗️ الصفقات":
-    st.header("🏗️ الصفقات وسندات الطلب")
-    ao_num = st.text_input("رقم الصفقة/السند")
-    if st.button("توليد محضر فتح الأظرفة (نموذج)"):
-        doc = Document()
-        doc.add_paragraph("PROCES-VERBAL D'OUVERTURE DES PLIS").bold = True
-        doc.add_paragraph(f"N° : {ao_num}\nObjet : Travaux de construction à Askaoun")
-        bio = BytesIO(); doc.save(bio)
-        st.download_button("📥 تحميل المحضر", bio.getvalue(), "PV_AO.docx")
-
-# مصلحة الموظفين والمحروقات (تتبع نفس المنطق)
-elif menu == "👥 الموظفين":
-    st.header("👥 سجل الموارد البشرية")
+# هـ. الموارد البشرية والتعمير (نماذج سريعة)
+elif menu == "👥 الموارد البشرية":
+    st.header("👥 تدبير الموظفين (Loi 113.14)")
+    st.info("هنا يتم تتبع المسار المهني والترقيات.")
     df_rh = pd.read_sql_query("SELECT * FROM staff", conn)
-    st.dataframe(df_rh)
+    st.write(df_rh)
 
-elif menu == "⛽ المحروقات":
-    st.header("⛽ تتبع المحروقات")
-    v = st.text_input("رقم الآلية")
-    l = st.number_input("اللترات", min_value=1.0)
-    if st.button("تسجيل"):
-        c.execute("INSERT INTO fuel VALUES (?,?, 'سائق 1', ?)", (v, l, str(date.today())))
-        conn.commit()
+elif menu == "🏠 التعمير والرخص":
+    st.header("🏠 مصلحة التعمير (Loi 12.90)")
+    with st.form("permit"):
+        req = st.text_input("صاحب الطلب")
+        p_type = st.selectbox("النوع", ["رخصة بناء", "شهادة سكن", "رخصة إصلاح"])
+        if st.form_submit_button("تسجيل الملف"):
+            c.execute("INSERT INTO permits VALUES (?, ?, 'قيد الدراسة', ?)", (p_type, req, str(date.today())))
+            conn.commit()
+    st.dataframe(pd.read_sql_query("SELECT * FROM permits", conn), use_container_width=True)
