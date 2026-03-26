@@ -1,134 +1,121 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Inches, Pt
-from io import BytesIO
 from datetime import date, timedelta
-from num2words import num2words
 
-# --- 1. الدوال المساعدة (Engine) ---
-def format_to_words_fr(amount_str):
-    try:
-        val = float(str(amount_str).replace(' ', '').replace(',', ''))
-        return f"{num2words(val, lang='fr').upper()} DIRHAMS TTC"
-    except: return "________________"
+# --- 1. إعدادات الصفحة (ضروري تكون هي الأولى) ---
+st.set_page_config(page_title="مدير مصالح أسكاون - النظام الشامل", layout="wide")
 
-def add_askaouen_header(doc):
-    section = doc.sections[0]
-    header = section.header
-    htable = header.add_table(1, 2, Inches(6.5))
-    htable.rows[0].cells[0].text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nCOMMUNE D'ASKAOUN"
-    htable.rows[0].cells[1].text = "المملكة المغربية\nوزارة الداخلية\nجماعة أسكاون"
-    htable.rows[0].cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+# --- 2. تخصيص المظهر (CSS) ---
+st.markdown("""
+    <style>
+    .main { background-color: #f5f7f9; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); }
+    </style>
+    """, unsafe_allow_html=True)
 
-# --- 2. إعدادات المنصة ---
-st.set_page_config(page_title="مدير مصالح أسكاون - النظام المتكامل", layout="wide")
-
-if 'p_name' not in st.session_state: st.session_state.p_name = "MOHAMED ZILALI"
-if 'd_name' not in st.session_state: st.session_state.d_name = "M BAREK BAK"
-if 't_name' not in st.session_state: st.session_state.t_name = "ABDELLATIF ATTAKY"
-
-# --- 3. القائمة الجانبية (Sidebar Navigation) ---
+# --- 3. القائمة الجانبية (Sidebar) ---
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/d/d5/Coat_of_arms_of_Morocco.svg", width=80)
-    st.title("إدارة مصالح أسكاون")
-    st.divider()
-    main_menu = st.radio("القائمة الرئيسية:", [
-        "🏠 لوحة القيادة والبريد",
-        "🏗️ سندات الطلب (BC)",
-        "🏗️ الصفقات العمومية (AO)",
+    st.title("جماعة أسكاون")
+    st.write("---")
+    menu = st.radio("القائمة الرئيسية:", [
+        "📊 لوحة القيادة (Dashboard)",
+        "🏗️ سندات الطلب والصفقات (BC/AO)",
         "👥 الموارد البشرية (RH)",
-        "🚜 الحظيرة والآليات",
-        "💰 المداخيل والممتلكات",
-        "🏛️ الدورات والمقررات"
+        "🚜 الحظيرة والمحروقات",
+        "💰 المداخيل والممتلكات (الكراء)",
+        "🏛️ الدورات والمقررات",
+        "📂 مكتب الضبط الرقمي"
     ])
-    st.divider()
-    st.caption("إصدار 2026 - نظام التدبير الموحد")
+    st.write("---")
+    st.info("متصل بصفة: مدير المصالح")
 
-# --- الوحدة 1: لوحة القيادة والبريد المستعجل ---
-if main_menu == "🏠 لوحة القيادة والبريد":
-    st.header("📬 المكتب الذكي لمدير المصالح")
-    col_m1, col_m2, col_m3 = st.columns(3)
-    col_m1.metric("مراسلات مستعجلة", "3", "🔴")
-    col_m2.metric("صفقات في طور النشر", "2", "🔵")
-    col_m3.metric("ميزانية التسيير المتبقية", "45%", "📉")
+# --- 4. محتوى الوحدات ---
 
-    st.subheader("⚠️ تنبيهات المراسلات الواردة")
-    with st.expander("🔴 مراسلة من العمالة: إحصاء الموظفين (أجل 48 ساعة)"):
-        st.write("رقم الإرسالية: 552/ASK - المصدر: قسم الجماعات الترابية")
-        st.button("توجيه لمصلحة الموظفين")
+# --- الوحدة 1: لوحة القيادة ---
+if menu == "📊 لوحة القيادة (Dashboard)":
+    st.header("📊 الوضعية العامة للجماعة")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("مراسلات مستعجلة", "3", "🔴")
+    c2.metric("صفقات جارية", "5", "🔵")
+    c3.metric("آليات في الخدمة", "90%", "🟢")
+    c4.metric("فائض الميزانية التقديري", "240k", "DH")
     
-    with st.expander("🟠 مراسلة من الخزينة: ملاحظات حول سند طلب"):
-        st.write("الموضوع: رفض التأشير على طلب توريد المحروقات")
-        st.button("توجيه للمصلحة المالية")
+    col_l, col_r = st.columns(2)
+    with col_l:
+        st.subheader("📉 استهلاك فصول الميزانية")
+        df_budget = pd.DataFrame({
+            "الفصل": ["المحروقات", "أدوات المكتب", "قطع الغيار", "الإطعام"],
+            "المستهلك": [85, 40, 20, 15],
+            "المتبقي": [15, 60, 80, 85]
+        })
+        fig = px.bar(df_budget, x="الفصل", y=["المستهلك", "المتبقي"], title="نسبة الاستهلاك %")
+        st.plotly_chart(fig, use_container_width=True)
+    with col_r:
+        st.subheader("🔔 تنبيهات النظام الذكية")
+        st.error("شركة 'OUBRAIM' تجاوزت أجل التنفيذ في سند الطلب رقم 04/2026.")
+        st.warning("الفحص التقني لشاحنة النفايات رقم 1 ينتهي بعد 3 أيام.")
 
-# --- الوحدة 2: سندات الطلب (BC) ---
-elif main_menu == "🏗️ سندات الطلب (BC)":
-    st.header("🏗️ تدبير سندات الطلب (Bons de Commande)")
-    t_bc1, t_bc2 = st.tabs(["📑 إعداد المحاضر", "🖼️ ألبوم الصور التقني"])
-    
-    with t_bc1:
-        num_bc = st.text_input("رقم السند", "01/ASK/2026")
-        st.info("ملاحظة: بانتظار تصحيحاتك للنصوص الفرنسية لاعتمادها نهائياً هنا.")
-        if st.button("توليد محضر فتح الأظرفة (نموذج مؤقت)"):
-            st.write("جاري التحضير...")
+# --- الوحدة 2: سندات الطلب والصفقات ---
+elif menu == "🏗️ سندات الطلب والصفقات (BC/AO)":
+    st.header("🏗️ تدبير الطلبيات العمومية")
+    tab1, tab2 = st.tabs(["📝 سندات الطلب (BC)", "🏗️ الصفقات الكبرى (AO)"])
+    with tab1:
+        st.subheader("إعداد محاضر BC")
+        bc_num = st.text_input("رقم السند", "01/ASK/2026")
+        st.info("غداً سنضيف هنا النصوص الفرنسية المصححة (PV, Notification, OS).")
+        if st.button("تجهيز الملف المؤقت"): st.success("الملف جاهز")
+    with tab2:
+        st.subheader("تتبع مراحل AO")
+        st.select_slider("مرحلة الصفقة:", options=["DCE", "النشر", "فتح الأظرفة", "التقييم", "المصادقة"])
 
-    with t_bc2:
-        up_imgs = st.file_uploader("ارفع صور الأشغال", accept_multiple_files=True)
-        if up_imgs:
-            if st.button("تحميل الألبوم المنسق"):
-                st.success("تم التجهيز")
+# --- الوحدة 3: الموارد البشرية ---
+elif menu == "👥 الموارد البشرية (RH)":
+    st.header("👥 تدبير الموظفين")
+    st.subheader("⏰ تنبيهات التقاعد (Retraite)")
+    df_rh = pd.DataFrame([
+        {"الموظف": "أحمد ..", "الإطار": "محرر", "تاريخ التقاعد": "2026-11-20"},
+        {"الموظف": "خديجة ..", "الإطار": "متصرف", "تاريخ التقاعد": "2027-04-15"}
+    ])
+    st.table(df_rh)
+    if st.button("توليد قرار رخصة إدارية"): st.info("جاري إعداد النموذج...")
 
-# --- الوحدة 3: الصفقات العمومية (AO) ---
-elif main_menu == "🏗️ الصفقات العمومية (AO)":
-    st.header("🏗️ تدبير المشاريع الكبرى (Appels d'Offres)")
-    ao_stage = st.select_slider("مرحلة الصفقة:", options=["DCE", "النشر", "فتح الأظرفة", "التقييم", "التنفيذ"])
-    st.write(f"الصفقة حالياً في مرحلة: **{ao_stage}**")
-    
-    col_ao1, col_ao2 = st.columns(2)
-    with col_ao1:
-        st.subheader("💰 تتبع الضمانات")
-        st.table(pd.DataFrame({"الشركة": ["A", "B"], "الضمان": ["مؤقت", "نهائي"], "المبلغ": [20000, 50000]}))
-    with col_ao2:
-        st.subheader("📑 محاضر اللجنة")
-        st.selectbox("اختر نوع المحضر للتحميل", ["PV Ouverture", "Rapport d'analyse", "PV d'attribution"])
+# --- الوحدة 4: الحظيرة والمحروقات ---
+elif menu == "🚜 الحظيرة والمحروقات":
+    st.header("🚜 تتبع الآليات والمحروقات")
+    col_v1, col_v2 = st.columns(2)
+    with col_v1:
+        st.subheader("⛽ سجل الكازوال")
+        st.number_input("الكمية (لتر)", value=0)
+        st.button("تسجيل استهلاك")
+    with col_v2:
+        st.subheader("🛠️ الحالة التقنية")
+        st.write("سيارة الإسعاف: تأمين ينتهي في 30/04/2026")
 
-# --- الوحدة 4: الموارد البشرية (RH) ---
-elif main_menu == "👥 الموارد البشرية (RH)":
-    st.header("👥 تدبير الموظفين والتقاعد")
-    st.subheader("⏳ تنبيهات التقاعد القريبة")
-    ret_df = pd.DataFrame([{"الاسم": "موظف أ", "تاريخ التقاعد": "2026-10-12"}, {"الاسم": "موظف ب", "تاريخ التقاعد": "2027-02-05"}])
-    st.table(ret_df)
-    st.button("توليد قرار رخصة إدارية")
-
-# --- الوحدة 5: الحظيرة والآليات ---
-elif main_menu == "🚜 الحظيرة والآليات":
-    st.header("🚜 تتبع حظيرة السيارات والآليات")
-    st.error("تنبيه: شاحنة النفايات رقم 1 تحتاج فحصاً تقنياً قبل نهاية الأسبوع!")
-    st.bar_chart({"استهلاك الشاحنات": 1500, "سيارات المصلحة": 600, "الإسعاف": 800})
-    st.number_input("تسجيل استهلاك كازوال (لتر)", value=0)
-
-# --- الوحدة 6: المداخيل والممتلكات ---
-elif main_menu == "💰 المداخيل والممتلكات":
-    st.header("💰 تدبير ممتلكات الجماعة")
-    st.subheader("🏠 وضعية كراء المحلات والمرافق")
-    rent_df = pd.DataFrame([
+# --- الوحدة 5: المداخيل والممتلكات ---
+elif menu == "💰 المداخيل والممتلكات (الكراء)":
+    st.header("💰 مداخيل الجماعة (الكراء)")
+    rent_data = pd.DataFrame([
         {"المرفق": "محل 1", "المستأجر": "أحمد", "السومة": 1200, "الحالة": "🔴 متأخر"},
-        {"المرفق": "مقهى", "المستأجر": "سعيد", "السومة": 3000, "الحالة": "🟢 مؤدى"}
+        {"المرفق": "مجزرة", "المستأجر": "شركة X", "السومة": 5000, "الحالة": "🟢 مؤدى"}
     ])
-    st.table(rent_df)
-    st.button("إرسال إنذار أداء (Mise en demeure)")
+    st.dataframe(rent_data, use_container_width=True)
+    if st.button("إصدار إنذارات أداء"): st.warning("تم تجهيز رسائل الإنذار.")
 
-# --- الوحدة 7: الدورات والمقررات ---
-elif main_menu == "🏛️ الدورات والمقررات":
+# --- الوحدة 6: الدورات والمقررات ---
+elif menu == "🏛️ الدورات والمقررات":
     st.header("🏛️ أمانة المجلس والدورات")
-    col_s1, col_s2 = st.columns(2)
-    with col_s1:
-        st.subheader("📅 التحضير للدورة")
-        st.date_input("تاريخ الدورة القادمة")
-        st.button("توليد استدعاءات الأعضاء")
-    with col_s2:
-        st.subheader("📜 أرشيف المقررات")
-        st.text_input("بحث في المقررات (مثلاً: بيع، شراكة...)")
+    st.date_input("تاريخ الدورة القادمة")
+    st.text_area("جدول الأعمال")
+    if st.button("توليد استدعاءات الأعضاء"): st.success("تم التوليد")
+
+# --- الوحدة 7: مكتب الضبط الرقمي ---
+elif menu == "📂 مكتب الضبط الرقمي":
+    st.header("📂 تتبع المراسلات")
+    st.text_input("بحث برقم الإرسالية...")
+    df_mail = pd.DataFrame([
+        {"الرقم": "552", "المصدر": "العمالة", "الموضوع": "طلب إحصاء", "الحالة": "تم الرد"},
+        {"الرقم": "553", "المصدر": "الخزينة", "الموضوع": "رفض حوالة", "الحالة": "قيد المعالجة"}
+    ])
+    st.table(df_mail)
