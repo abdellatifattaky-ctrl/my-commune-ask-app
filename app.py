@@ -1,10 +1,9 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from docx import Document
 import os
-from fpdf import FPDF
 
 st.set_page_config(page_title="نظام إدارة الجماعة القروية SGCA", layout="wide")
 st.title("🏛️ نظام إدارة الجماعة القروية (SGCA)")
@@ -45,9 +44,13 @@ id INTEGER PRIMARY KEY, sender TEXT, receiver TEXT, sujet TEXT, contenu TEXT, da
 c.execute('''CREATE TABLE IF NOT EXISTS convocations (
 id INTEGER PRIMARY KEY, type_conv TEXT, date_reunion TEXT, heure TEXT, lieu TEXT, ordre TEXT, membre TEXT, fichier TEXT)''')
 
-c.execute('''CREATE TABLE IF NOT EXISTS pv_cour (
-id INTEGER PRIMARY KEY, titre TEXT, lieu TEXT, ordre TEXT, membres TEXT, fichier TEXT)''')
+conn.commit()
 
+# =====================
+# إضافة مستخدم افتراضي (Admin)
+# =====================
+c.execute("INSERT OR IGNORE INTO users (username,password,role) VALUES (?,?,?)",
+          ("admin","admin123","Admin"))
 conn.commit()
 
 # =====================
@@ -168,14 +171,14 @@ elif choice == "🧾 PV الصفقات":
         if montant:
             doc.add_paragraph(f"Montant: {montant}")
         doc.add_paragraph("Signature de la commission: __________")
-        # رقم تسلسلي تلقائي
         ts = datetime.now().strftime("%Y%m%d%H%M%S")
         file_name = f"PV_{type_pv.replace(' ','_')}_{ts}.docx"
         doc.save(file_name)
-        # أرشيف تلقائي
-        os.rename(file_name, os.path.join(ARCHIVE_FOLDER,file_name))
-        with open(os.path.join(ARCHIVE_FOLDER,file_name),"rb") as f:
-            st.download_button("📥 تحميل PV الصفقة", f, file_name=file_name)
+        os.replace(file_name, os.path.join(ARCHIVE_FOLDER,file_name))
+        archive_path = os.path.join(ARCHIVE_FOLDER,file_name)
+        if os.path.exists(archive_path):
+            with open(archive_path,"rb") as f:
+                st.download_button("📥 تحميل PV الصفقة", f, file_name=file_name)
 
 # =====================
 # الميزانية
@@ -236,15 +239,17 @@ elif choice == "📨 الدورات واللجن":
             ts = datetime.now().strftime("%Y%m%d%H%M%S")
             file_name = f"convocation_{membre}_{ts}.docx"
             doc.save(file_name)
-            os.rename(file_name, os.path.join(ARCHIVE_FOLDER,file_name))
+            os.replace(file_name, os.path.join(ARCHIVE_FOLDER,file_name))
             c.execute("INSERT INTO convocations VALUES(NULL,?,?,?,?,?,?,?,?)",
                       (type_conv,str(date_reunion),heure,lieu,ordre,membre,file_name))
             conn.commit()
             files.append(file_name)
         st.success("تم إنشاء الاستدعاءات")
         for file_name in files:
-            with open(os.path.join(ARCHIVE_FOLDER,file_name),"rb") as f:
-                st.download_button("📥 تحميل " + file_name, f, file_name=file_name)
+            archive_path = os.path.join(ARCHIVE_FOLDER,file_name)
+            if os.path.exists(archive_path):
+                with open(archive_path,"rb") as f:
+                    st.download_button("📥 تحميل " + file_name, f, file_name=file_name)
 
 # =====================
 # الرسائل الداخلية
