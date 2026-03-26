@@ -1,88 +1,82 @@
 import streamlit as st
+from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Pt
+from io import BytesIO
 from datetime import datetime
 
-# إعدادات الصفحة
-st.set_page_config(page_title="نظام إدارة دورات المجالس - القانون المغربي", layout="wide")
+# دالة برمجية لتنسيق فقرات Word للعربية
+def format_arabic_paragraph(paragraph):
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    for run in paragraph.runs:
+        run.font.rtl = True
+        run.font.name = 'Arial'
+        run.font.size = Pt(14)
 
-# تصميم الواجهة بالعربية
-st.markdown("""
-    <style>
-    .report-font { font-family: 'Arial'; text-align: right; direction: rtl; }
-    </style>
-    """, unsafe_allow_html=True)
-
-st.title("🏛️ نظام إدارة دورات المجالس (وفق القانون المغربي)")
-st.sidebar.header("لوحة التحكم")
-
-menu = ["توليد استدعاء الأعضاء", "تحرير محضر الدورة", "حول النظام القانوني"]
-choice = st.sidebar.selectbox("اختر المهمة", menu)
-
-# --- القسم الأول: استدعاء الأعضاء ---
-if choice == "توليد استدعاء الأعضاء":
-    st.header("✉️ إرسال استدعاءات رسمية")
-    with st.form("invitation_form"):
-        council_name = st.text_input("اسم المجلس الجماعي/الإقليمي")
-        session_type = st.selectbox("نوع الدورة", ["دورة عادية", "دورة استثنائية"])
-        session_date = st.date_input("تاريخ الانعقاد")
-        session_time = st.time_input("ساعة الانعقاد")
-        agenda = st.text_area("جدول الأعمال (نقطة لكل سطر)")
-        members_list = st.text_area("قائمة الأعضاء (فصل بفاصلة)")
-        
-        submit = st.form_submit_button("توليد الاستدعاءات")
-        
-        if submit:
-            members = [m.strip() for m in members_list.split(",")]
-            st.success(f"تم توليد {len(members)} استدعاء بنجاح.")
-            for member in members:
-                invitation_text = f"""
-                المملكة المغربية
-                وزارة الداخلية
-                مجلس: {council_name}
-                
-                إلى السيد(ة): {member}
-                الموضوع: استدعاء لحضور {session_type}.
-                
-                بناءً على القانون التنظيمي 113.14، يتشرف رئيس المجلس بدعوتكم لحضور أشغال الدورة 
-                المقرر عقدها بتاريخ {session_date} على الساعة {session_time} بمقر الجماعة.
-                
-                جدول الأعمال:
-                {agenda}
-                """
-                st.text_area(f"استدعاء: {member}", invitation_text, height=200)
-
-# --- القسم الثاني: تحرير المحضر ---
-elif choice == "تحرير محضر الدورة":
-    st.header("📝 صياغة محضر الدورة القانوني")
+def create_docx(title, content):
+    doc = Document()
+    # إضافة العنوان
+    heading = doc.add_heading(title, 0)
+    heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
-    col1, col2 = st.columns(2)
-    with col1:
-        quorum = st.number_input("عدد الأعضاء المزاولين للمهام", min_value=1)
-        present = st.number_input("عدد الحاضرين", min_value=0)
+    # إضافة المحتوى
+    paragraph = doc.add_paragraph(content)
+    format_arabic_paragraph(paragraph)
     
-    with col2:
-        is_public = st.checkbox("جلسة علنية", value=True)
-        chairman = st.text_input("رئيس الجلسة")
+    # حفظ الملف في ذاكرة مؤقتة لإرساله للمتصفح
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
 
-    decisions = st.text_area("المقررات المتخذة ونتائج التصويت")
+# --- واجهة Streamlit ---
+st.title("🏛️ مولد المحاضر الرسمية (Word)")
 
-    if st.button("توليد المحضر النهائي"):
-        # التحقق من النصاب القانوني (تبسيط للمادة 42)
-        status = "قانوني" if present > (quorum / 2) else "غير مكتمل النصاب (يؤجل وفق المادة 43)"
+with st.sidebar:
+    st.header("إعدادات القالب")
+    council_name = st.text_input("اسم الجماعة/المجلس", "جماعة الدار البيضاء")
+    session_name = st.text_input("اسم الدورة", "دورة أكتوبر العادية")
+
+tab1, tab2 = st.tabs(["✉️ الاستدعاءات", "📝 محضر الجلسة"])
+
+with tab1:
+    st.subheader("توليد استدعاءات الأعضاء")
+    members = st.text_area("أدخل أسماء الأعضاء (اسم في كل سطر)")
+    agenda = st.text_area("جدول الأعمال")
+    
+    if st.button("توليد ملف Word للاستدعاءات"):
+        if members:
+            member_list = members.split('\n')
+            all_content = f"المملكة المغربية\nوزارة الداخلية\n{council_name}\n\n"
+            for m in member_list:
+                all_content += f"إلى السيد(ة): {m.strip()}\nالموضوع: استدعاء لحضور {session_name}\n\nجدول الأعمال:\n{agenda}\n"
+                all_content += "-"*30 + "\n"
+            
+            docx_file = create_docx(f"استدعاءات {session_name}", all_content)
+            st.download_button(
+                label="تحميل ملف Word 📄",
+                data=docx_file,
+                file_name="invitations.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+
+with tab2:
+    st.subheader("تحرير محضر الدورة الرسمي")
+    decisions = st.text_area("المقررات والتوصيات")
+    
+    if st.button("توليد محضر Word"):
+        report_text = f"""
+        محضر {session_name}
+        المجلس: {council_name}
+        تاريخ التحرير: {datetime.now().strftime('%Y-%m-%d')}
         
-        full_report = f"""
-        محضر {datetime.now().strftime('%Y/%m/%d')}
-        بناءً على القانون التنظيمي المتعلق بالجماعات، انعقدت الجلسة برئاسة {chairman}.
-        حالة النصاب: {status} ({present}/{quorum})
-        طبيعة الجلسة: {"علنية" if is_public else "سرية"}
-        
-        المقررات:
+        بناءً على القانون التنظيمي 113.14، تم اتخاذ المقررات التالية:
         {decisions}
-        
-        توقيع الرئيس: _______________    توقيع كاتب المجلس: _______________
         """
-        st.download_button("تحميل المحضر كملف نصي", full_report, file_name="minutes.txt")
-        st.code(full_report)
-
-# --- القسم الثالث: معلومات قانونية ---
-else:
-    st.info("هذا البرنامج مصمم وفق مقتضيات القانون التنظيمي 113.14 المغربي، خاصة المواد المتعلقة بآجال الاستدعاء (7 أيام للدورات العادية) وقواعد النصاب القانوني.")
+        docx_report = create_docx(f"محضر {session_name}", report_text)
+        st.download_button(
+            label="تحميل المحضر النهائي 📄",
+            data=docx_report,
+            file_name="minutes_report.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
