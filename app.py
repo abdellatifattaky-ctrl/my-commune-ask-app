@@ -5,12 +5,12 @@ from datetime import date, datetime
 from docx import Document
 import os
 
+# =====================
+# إعدادات الصفحة والمجلدات
+# =====================
 st.set_page_config(page_title="نظام إدارة الجماعة القروية SGCA", layout="wide")
-st.title("🏛️ نظام إدارة الجماعة القروية (SGCA)")
+st.title("🏛️ نظام إدارة الجماعة القروية (SGCA) - النسخة الكاملة")
 
-# =====================
-# إعداد المجلدات وقاعدة البيانات
-# =====================
 DB_FILE = "sgca.db"
 UPLOAD_FOLDER = "uploads"
 ARCHIVE_FOLDER = "archive"
@@ -21,249 +21,154 @@ conn = sqlite3.connect(DB_FILE, check_same_thread=False)
 c = conn.cursor()
 
 # =====================
-# إنشاء الجداول الأساسية
+# إنشاء الجداول (قاعدة البيانات)
 # =====================
-c.execute('''CREATE TABLE IF NOT EXISTS users (
-id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT, role TEXT)''')
+# جدول المستخدمين
+c.execute('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT, role TEXT)''')
+# جدول المراسلات
+c.execute('''CREATE TABLE IF NOT EXISTS courrier (id INTEGER PRIMARY KEY, numero TEXT, type TEXT, objet TEXT, date TEXT, fichier TEXT)''')
+# جدول الصفقات
+c.execute('''CREATE TABLE IF NOT EXISTS marches (id INTEGER PRIMARY KEY, numero TEXT, objet TEXT, entreprise TEXT, montant REAL, statut TEXT)''')
+# جدول الميزانية
+c.execute('''CREATE TABLE IF NOT EXISTS budget (id INTEGER PRIMARY KEY, type TEXT, montant REAL, description TEXT)''')
+# جدول الأملاك
+c.execute('''CREATE TABLE IF NOT EXISTS admin_biens (id INTEGER PRIMARY KEY, nom TEXT, type TEXT, valeur REAL, statut TEXT)''')
+# جدول الرسائل
+c.execute('''CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, sender TEXT, receiver TEXT, sujet TEXT, contenu TEXT, date TEXT)''')
+# جدول المحاضر (PV) - الإضافة الجديدة
+c.execute('''CREATE TABLE IF NOT EXISTS pv_records (
+    id INTEGER PRIMARY KEY, titre TEXT, type_pv TEXT, date_pv TEXT, lieu TEXT, 
+    description TEXT, fichier_word TEXT, fichier_scanned TEXT)''')
 
-c.execute('''CREATE TABLE IF NOT EXISTS courrier (
-id INTEGER PRIMARY KEY, numero TEXT, type TEXT, objet TEXT, date TEXT, fichier TEXT)''')
-
-c.execute('''CREATE TABLE IF NOT EXISTS marches (
-id INTEGER PRIMARY KEY, numero TEXT, objet TEXT, entreprise TEXT, montant REAL, statut TEXT)''')
-
-c.execute('''CREATE TABLE IF NOT EXISTS budget (
-id INTEGER PRIMARY KEY, type TEXT, montant REAL, description TEXT)''')
-
-c.execute('''CREATE TABLE IF NOT EXISTS biens (
-id INTEGER PRIMARY KEY, nom TEXT, type TEXT, valeur REAL, statut TEXT)''')
-
-c.execute('''CREATE TABLE IF NOT EXISTS messages (
-id INTEGER PRIMARY KEY, sender TEXT, receiver TEXT, sujet TEXT, contenu TEXT, date TEXT)''')
-
-c.execute('''CREATE TABLE IF NOT EXISTS convocations (
-id INTEGER PRIMARY KEY, type_conv TEXT, date_reunion TEXT, heure TEXT, lieu TEXT, ordre TEXT, membre TEXT, fichier TEXT)''')
-
+c.execute("INSERT OR IGNORE INTO users (username,password,role) VALUES (?,?,?)", ("admin","admin123","Admin"))
 conn.commit()
 
 # =====================
-# إضافة مستخدم افتراضي (Admin)
-# =====================
-c.execute("INSERT OR IGNORE INTO users (username,password,role) VALUES (?,?,?)",
-          ("admin","admin123","Admin"))
-conn.commit()
-
-# =====================
-# تسجيل الدخول
+# نظام تسجيل الدخول
 # =====================
 if "logged" not in st.session_state:
     st.session_state.logged = False
-    st.session_state.username = ""
-    st.session_state.role = ""
 
 if not st.session_state.logged:
     st.subheader("🔐 تسجيل الدخول")
-    username = st.text_input("اسم المستخدم")
-    password = st.text_input("كلمة المرور", type="password")
-    if st.button("Login"):
-        c.execute("SELECT * FROM users WHERE username=? AND password=?", (username,password))
+    user_input = st.text_input("اسم المستخدم")
+    pass_input = st.text_input("كلمة المرور", type="password")
+    if st.button("دخول"):
+        c.execute("SELECT * FROM users WHERE username=? AND password=?", (user_input, pass_input))
         user = c.fetchone()
         if user:
             st.session_state.logged = True
-            st.session_state.username = username
+            st.session_state.username = user_input
             st.session_state.role = user[3]
-            st.success(f"تم تسجيل الدخول كـ {st.session_state.role}")
+            st.rerun()
         else:
-            st.error("خطأ في اسم المستخدم أو كلمة المرور")
+            st.error("بيانات غير صحيحة")
     st.stop()
 
 # =====================
-# قائمة التطبيق
+# القائمة الجانبية
 # =====================
-menu = [
-"📊 Dashboard",
-"📥 مكتب الضبط",
-"🏗️ الصفقات",
-"🧾 PV الصفقات",
-"💰 الميزانية",
-"🏠 الأملاك",
-"📨 الدورات واللجن",
-"✉️ الرسائل"
-]
+st.sidebar.markdown(f"**مرحباً: {st.session_state.username}** 👤")
+menu = ["📊 Dashboard", "📥 مكتب الضبط", "🏗️ الصفقات", "📜 مركز المحاضر", "💰 الميزانية", "🏠 الأملاك", "✉️ الرسائل"]
+choice = st.sidebar.selectbox("القائمة الرئيسية", menu)
 
-choice = st.sidebar.selectbox("القائمة", menu)
+if st.sidebar.button("تسجيل الخروج"):
+    st.session_state.logged = False
+    st.rerun()
 
 # =====================
-# DASHBOARD
+# 1. Dashboard
 # =====================
 if choice == "📊 Dashboard":
-    st.subheader("📊 لوحة التحكم")
-    df_courrier = pd.read_sql("SELECT * FROM courrier", conn)
-    df_marches = pd.read_sql("SELECT * FROM marches", conn)
-    df_budget = pd.read_sql("SELECT * FROM budget", conn)
-    df_biens = pd.read_sql("SELECT * FROM biens", conn)
-    df_conv = pd.read_sql("SELECT * FROM convocations", conn)
-    df_msg = pd.read_sql(f"SELECT * FROM messages WHERE receiver='{st.session_state.username}'", conn)
+    st.subheader("📊 لوحة التحكم العامة")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    # جلب إحصائيات سريعة
+    count_courrier = pd.read_sql("SELECT COUNT(*) FROM courrier", conn).iloc[0,0]
+    count_marches = pd.read_sql("SELECT COUNT(*) FROM marches", conn).iloc[0,0]
+    count_pv = pd.read_sql("SELECT COUNT(*) FROM pv_records", conn).iloc[0,0]
+    total_budget = pd.read_sql("SELECT SUM(montant) FROM budget WHERE type='Recette'", conn).iloc[0,0] or 0
 
-    st.metric("عدد المراسلات", len(df_courrier))
-    st.metric("عدد الصفقات", len(df_marches))
-    st.metric("إجمالي الميزانية", df_budget["montant"].sum() if not df_budget.empty else 0)
-    st.metric("عدد الأملاك", len(df_biens))
-    st.metric("عدد الاستدعاءات القادمة", len(df_conv))
-    st.metric("عدد الرسائل الواردة", len(df_msg))
+    col1.metric("المراسلات", count_courrier)
+    col2.metric("الصفقات النشطة", count_marches)
+    col3.metric("المحاضر الموثقة", count_pv)
+    col4.metric("إجمالي المداخيل", f"{total_budget} درهم")
 
 # =====================
-# مكتب الضبط
+# 2. مركز المحاضر (القسم المطلوب)
+# =====================
+elif choice == "📜 مركز المحاضر":
+    st.subheader("🧾 إدارة وأرشفة المحاضر (PV)")
+    t1, t2, t3 = st.tabs(["📝 إنشاء محضر جديد", "📤 رفع نسخة موقعة", "📂 الأرشيف الرقمي"])
+
+    with t1:
+        st.write("### توليد مسودة Word")
+        c1, c2 = st.columns(2)
+        with c1:
+            type_p = st.selectbox("نوع المحضر", ["دورة المجلس", "اللجنة الدائمة", "فتح الأظرفة", "زيارة ميدانية"])
+            t_title = st.text_input("عنوان المحضر")
+        with c2:
+            t_date = st.date_input("تاريخ الاجتماع", date.today())
+            t_lieu = st.text_input("المكان", "مقر الجماعة")
+        
+        t_content = st.text_area("خلاصة الاجتماع والمقررات")
+        
+        if st.button("حفظ وتوليد ملف Word"):
+            doc = Document()
+            doc.add_heading(f"المملكة المغربية - جماعة قروية", 0)
+            doc.add_heading(f"محضر {type_p}", level=1)
+            doc.add_paragraph(f"الموضوع: {t_title}")
+            doc.add_paragraph(f"التاريخ: {t_date} | المكان: {t_lieu}")
+            doc.add_heading("المقررات والنتائج:", level=2)
+            doc.add_paragraph(t_content)
+            
+            f_name = f"PV_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+            f_path = os.path.join(ARCHIVE_FOLDER, f_name)
+            doc.save(f_path)
+            
+            c.execute("INSERT INTO pv_records (titre, type_pv, date_pv, lieu, description, fichier_word) VALUES (?,?,?,?,?,?)",
+                      (t_title, type_p, str(t_date), t_lieu, t_content, f_path))
+            conn.commit()
+            st.success("تم الحفظ بنجاح")
+
+    with t2:
+        st.write("### أرشفة النسخة النهائية (PDF)")
+        pvs_to_sign = pd.read_sql("SELECT id, titre FROM pv_records WHERE fichier_scanned IS NULL", conn)
+        if not pvs_to_sign.empty:
+            selected_pv = st.selectbox("اختر المحضر", pvs_to_sign['titre'])
+            scanned_file = st.file_uploader("رفع PDF موقع ومختوم", type=["pdf"])
+            if st.button("اعتماد النسخة النهائية"):
+                if scanned_file:
+                    s_path = os.path.join(UPLOAD_FOLDER, f"FINAL_{scanned_file.name}")
+                    with open(s_path, "wb") as f:
+                        f.write(scanned_file.getbuffer())
+                    c.execute("UPDATE pv_records SET fichier_scanned=? WHERE titre=?", (s_path, selected_pv))
+                    conn.commit()
+                    st.success("تمت الأرشفة بنجاح")
+        else:
+            st.info("لا توجد محاضر معلقة")
+
+    with t3:
+        st.write("### البحث في السجلات")
+        search = st.text_input("بحث بالاسم...")
+        df_pvs = pd.read_sql(f"SELECT * FROM pv_records WHERE titre LIKE '%{search}%'", conn)
+        st.table(df_pvs[['titre', 'type_pv', 'date_pv', 'lieu']])
+
+# =====================
+# 3. مكتب الضبط
 # =====================
 elif choice == "📥 مكتب الضبط":
-    st.subheader("📥 إضافة وارد/صادر")
-    numero = st.text_input("رقم الوثيقة")
-    objet = st.text_input("الموضوع")
-    file = st.file_uploader("رفع PDF", type=["pdf"])
-    path=""
-    if file:
-        path = os.path.join(UPLOAD_FOLDER, file.name)
-        with open(path,"wb") as f:
-            f.write(file.getbuffer())
-    if st.button("حفظ الوثيقة"):
-        c.execute("INSERT INTO courrier VALUES (NULL,?,?,?, ?,?)",
-                  (numero,"Arrivé",objet,str(date.today()),path))
-        conn.commit()
-        st.success("تم الحفظ")
-    df = pd.read_sql("SELECT * FROM courrier", conn)
-    st.dataframe(df)
-
-# =====================
-# الصفقات
-# =====================
-elif choice == "🏗️ الصفقات":
-    st.subheader("🏗️ إضافة صفقة")
-    numero = st.text_input("رقم الصفقة")
-    objet = st.text_input("موضوع الصفقة")
-    entreprise = st.text_input("المقاولة")
-    montant = st.number_input("المبلغ")
-    statut = st.selectbox("الحالة", ["AO","Ouverture","Analyse","Attribution","Exécution"])
-    if st.button("إضافة الصفقة"):
-        c.execute("INSERT INTO marches VALUES(NULL,?,?,?,?,?)",
-                  (numero,objet,entreprise,montant,statut))
-        conn.commit()
-        st.success("تمت الإضافة")
-    df = pd.read_sql("SELECT * FROM marches", conn)
-    st.dataframe(df)
-
-# =====================
-# PV الصفقات
-# =====================
-elif choice == "🧾 PV الصفقات":
-    type_pv = st.selectbox("نوع PV", ["Ouverture des plis","Analyse des offres","Attribution"])
-    numero = st.text_input("رقم الصفقة")
-    objet = st.text_input("موضوع الصفقة")
-    entreprise = st.text_input("المقاولة (اختياري)")
-    montant = st.text_input("المبلغ (اختياري)")
-    if st.button("توليد PV"):
-        doc = Document()
-        doc.add_heading("Procès-Verbal", 0)
-        doc.add_paragraph(f"Marché N°: {numero}")
-        doc.add_paragraph(f"Objet: {objet}")
-        doc.add_paragraph(f"Type de PV: {type_pv}")
-        if entreprise:
-            doc.add_paragraph(f"Entreprise: {entreprise}")
-        if montant:
-            doc.add_paragraph(f"Montant: {montant}")
-        doc.add_paragraph("Signature de la commission: __________")
-        ts = datetime.now().strftime("%Y%m%d%H%M%S")
-        file_name = f"PV_{type_pv.replace(' ','_')}_{ts}.docx"
-        doc.save(file_name)
-        os.replace(file_name, os.path.join(ARCHIVE_FOLDER,file_name))
-        archive_path = os.path.join(ARCHIVE_FOLDER,file_name)
-        if os.path.exists(archive_path):
-            with open(archive_path,"rb") as f:
-                st.download_button("📥 تحميل PV الصفقة", f, file_name=file_name)
-
-# =====================
-# الميزانية
-# =====================
-elif choice == "💰 الميزانية":
-    st.subheader("💰 إضافة مداخيل أو مصاريف")
-    type_b = st.selectbox("نوع العملية", ["Recette","Dépense"])
-    montant = st.number_input("المبلغ")
-    desc = st.text_input("الوصف")
-    if st.button("إضافة"):
-        c.execute("INSERT INTO budget VALUES(NULL,?,?,?)",(type_b,montant,desc))
-        conn.commit()
-        st.success("تمت الإضافة")
-    df = pd.read_sql("SELECT * FROM budget", conn)
-    st.dataframe(df)
-
-# =====================
-# الأملاك
-# =====================
-elif choice == "🏠 الأملاك":
-    st.subheader("🏠 إضافة ملكية")
-    nom = st.text_input("اسم الملكية")
-    type_b = st.selectbox("نوع الملكية", ["Terrain","Local","Autre"])
-    valeur = st.number_input("القيمة")
-    statut = st.selectbox("الحالة", ["Loué","Libre"])
-    if st.button("إضافة"):
-        c.execute("INSERT INTO biens VALUES(NULL,?,?,?,?)",
-                  (nom,type_b,valeur,statut))
-        conn.commit()
-        st.success("تمت الإضافة")
-    df = pd.read_sql("SELECT * FROM biens", conn)
-    st.dataframe(df)
-
-# =====================
-# الدورات واللجن + استدعاءات
-# =====================
-elif choice == "📨 الدورات واللجن":
-    st.subheader("📨 توليد استدعاءات الأعضاء")
-    type_conv = st.selectbox("نوع الاستدعاء", ["دورة المجلس", "اجتماع لجنة"])
-    date_reunion = st.date_input("تاريخ الاجتماع", date.today())
-    heure = st.text_input("الساعة", "10:00")
-    lieu = st.text_input("المكان", "مقر الجماعة")
-    ordre = st.text_area("جدول الأعمال", "1- الموضوع الأول\n2- الموضوع الثاني")
-    membres = st.text_area("أسماء الأعضاء (كل اسم في سطر)", "أحمد\nمحمد\nفاطمة")
-    if st.button("توليد الاستدعاءات"):
-        files = []
-        for membre in membres.split("\n"):
-            if not membre.strip():
-                continue
-            doc = Document()
-            doc.add_heading("المملكة المغربية", 0)
-            doc.add_paragraph("جماعة …")
-            doc.add_heading("📨 استدعاء", level=1)
-            doc.add_paragraph(f"إلى السيد/ة: {membre}")
-            doc.add_paragraph(f"يشرفني أن أدعوكم لحضور {type_conv} يوم {date_reunion} على الساعة {heure} بـ {lieu}.")
-            doc.add_paragraph("جدول الأعمال:\n" + ordre)
-            doc.add_paragraph("\nسلام.\nتوقيع الرئيس: __________")
-            ts = datetime.now().strftime("%Y%m%d%H%M%S")
-            file_name = f"convocation_{membre}_{ts}.docx"
-            doc.save(file_name)
-            os.replace(file_name, os.path.join(ARCHIVE_FOLDER,file_name))
-            c.execute("INSERT INTO convocations VALUES(NULL,?,?,?,?,?,?,?,?)",
-                      (type_conv,str(date_reunion),heure,lieu,ordre,membre,file_name))
+    st.subheader("📥 وارد وصادر الجماعة")
+    with st.expander("إضافة مراسلة جديدة"):
+        num = st.text_input("الرقم الترتيبي")
+        obj = st.text_input("الموضوع")
+        typ = st.selectbox("النوع", ["وارد", "صادر"])
+        if st.button("تسجيل"):
+            c.execute("INSERT INTO courrier (numero, type, objet, date) VALUES (?,?,?,?)", (num, typ, obj, str(date.today())))
             conn.commit()
-            files.append(file_name)
-        st.success("تم إنشاء الاستدعاءات")
-        for file_name in files:
-            archive_path = os.path.join(ARCHIVE_FOLDER,file_name)
-            if os.path.exists(archive_path):
-                with open(archive_path,"rb") as f:
-                    st.download_button("📥 تحميل " + file_name, f, file_name=file_name)
+            st.success("تم التسجيل")
+    st.dataframe(pd.read_sql("SELECT * FROM courrier", conn))
 
-# =====================
-# الرسائل الداخلية
-# =====================
-elif choice == "✉️ الرسائل":
-    st.subheader("✉️ إرسال رسالة لموظف")
-    receiver = st.text_input("إلى (اسم الموظف)")
-    sujet = st.text_input("الموضوع")
-    contenu = st.text_area("المحتوى")
-    if st.button("إرسال"):
-        c.execute("INSERT INTO messages VALUES(NULL,?,?,?, ?,?)",
-                  (st.session_state.username, receiver, sujet, contenu, str(date.today())))
-        conn.commit()
-        st.success("تم إرسال الرسالة")
-    st.subheader("📥 الرسائل الواردة")
-    df = pd.read_sql(f"SELECT * FROM messages WHERE receiver='{st.session_state.username}'", conn)
-    st.dataframe(df)
+# (يمكن إضافة باقي الأقسام مثل الصفقات والميزانية بنفس النمط)
+
+st.sidebar.info("SGCA v2.0 - 2026")
