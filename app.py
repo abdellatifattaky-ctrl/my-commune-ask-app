@@ -1,88 +1,140 @@
 import streamlit as st
 import pandas as pd
+import sqlite3
 from datetime import date
 
-# --- 1. إعداد الصفحة (يجب أن يكون أول سطر) ---
-st.set_page_config(page_title="مدير مصالح أسكاون - النظام الموحد", layout="wide")
+# --- 1. إعدادات المنصة ---
+st.set_page_config(page_title="مدير مصالح أسكاون - النظام الموحد", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. واجهة المستخدم الرسومية ---
-st.title("🏛️ المنظومة الرقمية لجماعة أسكاون")
-st.markdown(f"**مرحباً سيادة مدير المصالح** | التاريخ: {date.today()}")
-st.divider()
+# --- 2. محرك قاعدة البيانات (الدائم) ---
+# ملاحظة: في Streamlit Cloud، يفضل ربطه لاحقاً بـ Google Sheets للحفظ الأبدي
+conn = sqlite3.connect('askaouen_admin_v2.db', check_same_thread=False)
+c = conn.cursor()
 
-# --- 3. القائمة الجانبية للتنقل ---
+# إنشاء الجداول إذا لم تكن موجودة
+c.execute('CREATE TABLE IF NOT EXISTS budget (type TEXT, item TEXT, amount REAL, date TEXT)')
+c.execute('CREATE TABLE IF NOT EXISTS fuel (vehicle TEXT, liters REAL, driver TEXT, date TEXT)')
+c.execute('CREATE TABLE IF NOT EXISTS staff (name TEXT, grade TEXT, task TEXT)')
+c.execute('CREATE TABLE IF NOT EXISTS rent (unit TEXT, tenant TEXT, price REAL, status TEXT)')
+conn.commit()
+
+# --- 3. تصميم الواجهة الجانبية ---
 with st.sidebar:
-    st.header("القائمة الرئيسية")
-    menu = st.radio("اختر القسم:", [
-        "📊 لوحة القيادة (الرئيسية)",
-        "🏗️ سندات الطلب (BC)",
-        "🏗️ الصفقات العمومية (AO)",
-        "👥 الموارد البشرية (RH)",
-        "🚜 الحظيرة والمحروقات",
-        "💰 المداخيل والممتلكات",
-        "📂 مكتب الضبط الرقمي"
+    st.image("https://upload.wikimedia.org/wikipedia/commons/d/d5/Coat_of_arms_of_Morocco.svg", width=70)
+    st.title("جماعة أسكاون")
+    st.markdown("---")
+    choice = st.radio("قائمة التسيير:", [
+        "🏠 لوحة القيادة المالية",
+        "🏗️ الطلبيات العمومية (BC/AO)",
+        "⛽ تتبع المحروقات",
+        "👥 تدبير الموظفين",
+        "💰 الممتلكات والكراء",
+        "📂 مكتب الضبط والأرشيف"
     ])
-    st.write("---")
-    st.info("إصدار الإدارة الرقمية 2026")
+    st.markdown("---")
+    st.caption(f"📅 التاريخ: {date.today()}")
+    st.info("مرحباً سيادة مدير المصالح")
 
-# --- 4. منطق الوحدات (Modules) ---
+# --- 4. الوظائف البرمجية لكل قسم ---
 
-# الوحدة 1: لوحة القيادة
-if menu == "📊 لوحة القيادة (الرئيسية)":
-    st.subheader("📈 الحالة العامة للجماعة")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("مراسلات مستعجلة", "3", "🔴")
-    col2.metric("صفقات جارية", "5", "🔵")
-    col3.metric("آليات في الخدمة", "90%", "🟢")
+# --- القسم 1: لوحة القيادة المالية ---
+if choice == "🏠 لوحة القيادة المالية":
+    st.header("📊 ميزانية الجماعة: المداخيل والمصاريف")
     
-    st.write("### 🔔 تنبيهات المدير")
-    st.warning("شركة 'OUBRAIM' تجاوزت أجل التنفيذ في سند الطلب رقم 04/2026.")
-    st.error("تنبيه: سيارة الإسعاف تحتاج تأميناً قبل نهاية الأسبوع.")
+    # استمارة إدخال سريعة
+    with st.expander("➕ تسجيل عملية مالية جديدة"):
+        with st.form("budget_form"):
+            col1, col2, col3 = st.columns(3)
+            b_type = col1.selectbox("نوع العملية", ["مداخيل", "مصاريف"])
+            b_item = col2.text_input("البيان / التفصيل")
+            b_amount = col3.number_input("المبلغ بالدرهم", min_value=0.0)
+            if st.form_submit_button("حفظ العملية"):
+                c.execute("INSERT INTO budget VALUES (?, ?, ?, ?)", (b_type, b_item, b_amount, str(date.today())))
+                conn.commit()
+                st.success("تم الحفظ وتحديث الميزانية")
+                st.rerun()
 
-# الوحدة 2: سندات الطلب
-elif menu == "🏗️ سندات الطلب (BC)":
-    st.subheader("🏗️ تدبير سندات الطلب")
-    bc_num = st.text_input("رقم السند", "01/ASK/2026")
-    st.info("ملاحظة: غداً سنقوم بإدراج النصوص الفرنسية المصححة للمحاضر هنا.")
-    if st.button("تجهيز ملف السند"):
-        st.success(f"تم تسجيل السند {bc_num} في قاعدة البيانات المؤقتة.")
+    # عرض التحليلات المالية
+    df_b = pd.read_sql_query("SELECT * FROM budget", conn)
+    if not df_b.empty:
+        total_rev = df_b[df_b['type'] == 'مداخيل']['amount'].sum()
+        total_exp = df_b[df_b['type'] == 'مصاريف']['amount'].sum()
+        balance = total_rev - total_exp
+        
+        m1, m2, m3 = st.columns(3)
+        m1.metric("إجمالي المداخيل", f"{total_rev:,.2f} DH")
+        m2.metric("إجمالي المصاريف", f"-{total_exp:,.2f} DH", delta_color="inverse")
+        m3.metric("الفائض التقديري", f"{balance:,.2f} DH", delta=f"{(balance/total_rev*100):.1f}%" if total_rev > 0 else 0)
+        
+        st.subheader("📝 السجل المالي الأخير")
+        st.dataframe(df_b.sort_index(ascending=False), use_container_width=True)
+    else:
+        st.info("لا توجد بيانات مالية مسجلة. ابدأ بإضافة أول عملية.")
 
-# الوحدة 3: الصفقات العمومية
-elif menu == "🏗️ الصفقات العمومية (AO)":
-    st.subheader("🏗️ الصفقات الكبرى (Appels d'Offres)")
-    ao_stage = st.select_slider("مرحلة الصفقة:", options=["DCE", "النشر", "فتح الأظرفة", "التقييم", "المصادقة"])
-    st.write(f"الحالة الحالية: **{ao_stage}**")
+# --- القسم 2: الطلبيات العمومية (BC/AO) ---
+elif choice == "🏗️ الطلبيات العمومية (BC/AO)":
+    st.header("🏗️ تدبير الصفقات وسندات الطلب")
+    st.warning("⚠️ هذا القسم بانتظار نصوص المحاضر (PV) بالفرنسية التي ستوافينا بها غداً.")
+    
+    t1, t2 = st.tabs(["📄 سندات الطلب (BC)", "🏢 الصفقات الكبرى (AO)"])
+    with t1:
+        st.subheader("إعداد سند طلب جديد")
+        bc_ref = st.text_input("مرجع سند الطلب (N° BC)")
+        st.button("تجهيز الملف الإداري")
+    with t2:
+        st.subheader("تتبع مراحل الصفقات العمومية")
+        st.selectbox("الحالة الحالية", ["إعداد DCE", "الإعلان", "فتح الأظرفة", "المصادقة"])
 
-# الوحدة 4: الموارد البشرية
-elif menu == "👥 الموارد البشرية (RH)":
-    st.subheader("👥 تدبير الموظفين والتقاعد")
-    rh_data = pd.DataFrame([
-        {"الموظف": "أحمد ..", "الإطار": "محرر", "تاريخ التقاعد": "2026-11-20"},
-        {"الموظف": "خديجة ..", "الإطار": "متصرف", "تاريخ التقاعد": "2027-04-15"}
-    ])
-    st.table(rh_data)
+# --- القسم 3: تتبع المحروقات ---
+elif choice == "⛽ تتبع المحروقات":
+    st.header("⛽ سجل استهلاك آليات الجماعة")
+    with st.form("fuel_form"):
+        c1, c2, c3 = st.columns(3)
+        v = c1.selectbox("الآلية", ["شاحنة النفايات", "سيارة الإسعاف", "جرافة", "سيارة المصلحة"])
+        l = c2.number_input("الكمية (لتر)", min_value=1.0)
+        d = c3.text_input("اسم السائق")
+        if st.form_submit_button("تسجيل الوصول"):
+            c.execute("INSERT INTO fuel VALUES (?, ?, ?, ?)", (v, l, d, str(date.today())))
+            conn.commit()
+            st.rerun()
+    
+    df_f = pd.read_sql_query("SELECT * FROM fuel", conn)
+    st.dataframe(df_f, use_container_width=True)
 
-# الوحدة 5: الحظيرة والمحروقات
-elif menu == "🚜 الحظيرة والمحروقات":
-    st.subheader("🚜 تتبع الآليات والمحروقات")
-    st.write("استهلاك المحروقات لهذا الشهر:")
-    st.bar_chart({"الشاحنات": 1200, "سيارات المصلحة": 500, "الإسعاف": 300})
+# --- القسم 4: الموظفين ---
+elif choice == "👥 تدبير الموظفين":
+    st.header("👥 سجل الموارد البشرية")
+    with st.expander("➕ إضافة موظف جديد"):
+        with st.form("staff_form"):
+            s_n = st.text_input("الاسم الكامل")
+            s_g = st.text_input("السلم / الإطار")
+            s_t = st.text_input("المهمة الحالية")
+            if st.form_submit_button("حفظ الموظف"):
+                c.execute("INSERT INTO staff VALUES (?, ?, ?)", (s_n, s_g, s_t))
+                conn.commit()
+                st.rerun()
+    
+    df_s = pd.read_sql_query("SELECT * FROM staff", conn)
+    st.table(df_s)
 
-# الوحدة 6: المداخيل والممتلكات
-elif menu == "💰 المداخيل والممتلكات":
-    st.subheader("💰 كراء الممتلكات الجماعية")
-    rent_df = pd.DataFrame([
-        {"المرفق": "محل رقم 1", "المستأجر": "أحمد", "الحالة": "🔴 متأخر"},
-        {"المرفق": "مجزرة", "المستأجر": "شركة X", "الحالة": "🟢 مؤدى"}
-    ])
-    st.table(rent_df)
+# --- القسم 5: الممتلكات والكراء ---
+elif choice == "💰 الممتلكات والكراء":
+    st.header("💰 مداخيل كراء ممتلكات الجماعة")
+    with st.form("rent_form"):
+        c1, c2, c3 = st.columns(3)
+        prop = c1.text_input("اسم المحل/المرفق")
+        ten = c2.text_input("المستأجر")
+        val = c3.number_input("السومة الشهرية")
+        if st.form_submit_button("تسجيل المرفق"):
+            c.execute("INSERT INTO rent VALUES (?, ?, ?, 'مؤدى')", (prop, ten, val))
+            conn.commit()
+            st.rerun()
+    
+    df_r = pd.read_sql_query("SELECT * FROM rent", conn)
+    st.dataframe(df_r, use_container_width=True)
 
-# الوحدة 7: مكتب الضبط
-elif menu == "📂 مكتب الضبط الرقمي":
-    st.subheader("📂 تتبع الوارد والصادر")
-    search = st.text_input("بحث برقم الإرسالية...")
-    mail_df = pd.DataFrame([
-        {"الرقم": "552", "المصدر": "العمالة", "الموضوع": "إحصاء", "الحالة": "تم الرد"},
-        {"الرقم": "553", "المصدر": "الخزينة", "الموضوع": "ملاحظات", "الحالة": "قيد المعالجة"}
-    ])
-    st.dataframe(mail_df)
+# --- القسم 6: مكتب الضبط ---
+elif choice == "📂 مكتب الضبط والأرشيف":
+    st.header("📂 تتبع المراسلات والملفات")
+    st.info("هنا سيتم أرشفة المراسلات الواردة من العمالة والخزينة.")
+    st.text_input("بحث برقم الإرسالية...")
