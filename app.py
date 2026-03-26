@@ -3,172 +3,180 @@ import sqlite3
 import pandas as pd
 from datetime import date
 
-# =========================
-# DB CONNECTION
-# =========================
 conn = sqlite3.connect('database.db', check_same_thread=False)
 c = conn.cursor()
 
-# =========================
-# TABLES CREATION
-# =========================
-c.execute('''CREATE TABLE IF NOT EXISTS courriers (
+# =====================
+# إنشاء الجداول
+# =====================
+c.execute('''CREATE TABLE IF NOT EXISTS courrier (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    numero TEXT,
     type TEXT,
     objet TEXT,
-    date TEXT
+    date TEXT,
+    fichier TEXT
+)''')
+
+c.execute('''CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT,
+    date TEXT,
+    ordre TEXT,
+    pv TEXT
+)''')
+
+c.execute('''CREATE TABLE IF NOT EXISTS commissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom TEXT,
+    membres TEXT,
+    pv TEXT
 )''')
 
 c.execute('''CREATE TABLE IF NOT EXISTS marches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    numero TEXT,
     objet TEXT,
     entreprise TEXT,
     montant REAL,
-    statut TEXT,
-    date TEXT
-)''')
-
-c.execute('''CREATE TABLE IF NOT EXISTS conseils (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sujet TEXT,
-    decision TEXT,
-    date TEXT
-)''')
-
-c.execute('''CREATE TABLE IF NOT EXISTS employes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nom TEXT,
-    poste TEXT
+    statut TEXT
 )''')
 
 conn.commit()
 
-# =========================
-# APP UI
-# =========================
-st.set_page_config(page_title="SGCA", layout="wide")
+# =====================
+# واجهة التطبيق
+# =====================
+st.set_page_config(page_title="نظام الجماعة", layout="wide")
 
-st.title("🏛️ SGCA - Gestion Communale")
+st.title("🏛️ نظام تدبير الجماعة")
 
 menu = [
-    "Dashboard",
-    "Courriers",
-    "Marchés Publics",
-    "Conseil Communal",
-    "Employés"
+    "📊 لوحة القيادة",
+    "📥 مكتب الضبط",
+    "🏛️ دورات المجلس",
+    "👥 اللجن",
+    "🏗️ الصفقات",
+    "🧾 توليد محضر"
 ]
 
-choice = st.sidebar.selectbox("Menu", menu)
+choice = st.sidebar.selectbox("القائمة", menu)
 
-# =========================
-# DASHBOARD
-# =========================
-if choice == "Dashboard":
-    st.subheader("📊 Tableau de bord")
+# =====================
+# Dashboard
+# =====================
+if choice == "📊 لوحة القيادة":
+    st.subheader("إحصائيات")
 
-    df_c = pd.read_sql("SELECT * FROM courriers", conn)
-    df_m = pd.read_sql("SELECT * FROM marches", conn)
-    df_con = pd.read_sql("SELECT * FROM conseils", conn)
+    df1 = pd.read_sql("SELECT * FROM courrier", conn)
+    df2 = pd.read_sql("SELECT * FROM sessions", conn)
+    df3 = pd.read_sql("SELECT * FROM marches", conn)
 
     col1, col2, col3 = st.columns(3)
 
-    col1.metric("Courriers", len(df_c))
-    col2.metric("Marchés", len(df_m))
-    col3.metric("Décisions Conseil", len(df_con))
+    col1.metric("المراسلات", len(df1))
+    col2.metric("الدورات", len(df2))
+    col3.metric("الصفقات", len(df3))
 
-    st.write("📈 Répartition des courriers")
-    if not df_c.empty:
-        st.bar_chart(df_c['type'].value_counts())
+# =====================
+# مكتب الضبط
+# =====================
+elif choice == "📥 مكتب الضبط":
+    st.subheader("تدبير المراسلات")
 
-# =========================
-# COURRIERS
-# =========================
-elif choice == "Courriers":
-    st.subheader("📥📤 Gestion des Courriers")
+    numero = st.text_input("رقم المراسلة")
+    type_c = st.selectbox("النوع", ["وارد", "صادر"])
+    objet = st.text_input("الموضوع")
+    date_c = st.date_input("التاريخ", date.today())
+    file = st.file_uploader("رفع الوثيقة")
 
-    tab1, tab2 = st.tabs(["Ajouter", "Liste"])
+    if st.button("حفظ"):
+        c.execute("INSERT INTO courrier (numero, type, objet, date, fichier) VALUES (?, ?, ?, ?, ?)",
+                  (numero, type_c, objet, str(date_c), str(file)))
+        conn.commit()
+        st.success("تم الحفظ")
 
-    with tab1:
-        type_c = st.selectbox("Type", ["Arrivé", "Départ"])
-        objet = st.text_input("Objet")
-        date_c = st.date_input("Date", date.today())
+    df = pd.read_sql("SELECT * FROM courrier", conn)
+    st.dataframe(df)
 
-        if st.button("Enregistrer Courrier"):
-            c.execute("INSERT INTO courriers (type, objet, date) VALUES (?, ?, ?)",
-                      (type_c, objet, str(date_c)))
-            conn.commit()
-            st.success("✅ Enregistré")
+# =====================
+# الدورات
+# =====================
+elif choice == "🏛️ دورات المجلس":
+    st.subheader("إدارة الدورات")
 
-    with tab2:
-        df = pd.read_sql("SELECT * FROM courriers", conn)
-        st.dataframe(df)
+    type_s = st.selectbox("نوع الدورة", ["عادية", "استثنائية"])
+    date_s = st.date_input("التاريخ")
+    ordre = st.text_area("جدول الأعمال")
+    pv = st.file_uploader("محضر الدورة")
 
-# =========================
-# MARCHÉS PUBLICS
-# =========================
-elif choice == "Marchés Publics":
-    st.subheader("🏗️ Gestion des Marchés")
+    if st.button("إضافة دورة"):
+        c.execute("INSERT INTO sessions (type, date, ordre, pv) VALUES (?, ?, ?, ?)",
+                  (type_s, str(date_s), ordre, str(pv)))
+        conn.commit()
+        st.success("تمت الإضافة")
 
-    tab1, tab2 = st.tabs(["Ajouter Marché", "Liste"])
+    df = pd.read_sql("SELECT * FROM sessions", conn)
+    st.dataframe(df)
 
-    with tab1:
-        objet = st.text_input("Objet du marché")
-        entreprise = st.text_input("Entreprise")
-        montant = st.number_input("Montant", min_value=0.0)
-        statut = st.selectbox("Statut", ["Préparation", "En cours", "Terminé"])
-        date_m = st.date_input("Date", date.today())
+# =====================
+# اللجن
+# =====================
+elif choice == "👥 اللجن":
+    st.subheader("تدبير اللجن")
 
-        if st.button("Ajouter Marché"):
-            c.execute("INSERT INTO marches (objet, entreprise, montant, statut, date) VALUES (?, ?, ?, ?, ?)",
-                      (objet, entreprise, montant, statut, str(date_m)))
-            conn.commit()
-            st.success("✅ Marché ajouté")
+    nom = st.text_input("اسم اللجنة")
+    membres = st.text_area("الأعضاء")
+    pv = st.file_uploader("محضر اللجنة")
 
-    with tab2:
-        df = pd.read_sql("SELECT * FROM marches", conn)
-        st.dataframe(df)
+    if st.button("إضافة لجنة"):
+        c.execute("INSERT INTO commissions (nom, membres, pv) VALUES (?, ?, ?)",
+                  (nom, membres, str(pv)))
+        conn.commit()
+        st.success("تمت الإضافة")
 
-# =========================
-# CONSEIL COMMUNAL
-# =========================
-elif choice == "Conseil Communal":
-    st.subheader("🏛️ Conseil Communal")
+    df = pd.read_sql("SELECT * FROM commissions", conn)
+    st.dataframe(df)
 
-    tab1, tab2 = st.tabs(["Ajouter Décision", "Liste"])
+# =====================
+# الصفقات
+# =====================
+elif choice == "🏗️ الصفقات":
+    st.subheader("تدبير الصفقات")
 
-    with tab1:
-        sujet = st.text_input("Sujet")
-        decision = st.text_area("Décision")
-        date_con = st.date_input("Date", date.today())
+    numero = st.text_input("رقم الصفقة")
+    objet = st.text_input("الموضوع")
+    entreprise = st.text_input("المقاولة")
+    montant = st.number_input("المبلغ", min_value=0.0)
+    statut = st.selectbox("الحالة", ["إعلان", "فتح الأظرفة", "إسناد", "تنفيذ"])
 
-        if st.button("Ajouter Décision"):
-            c.execute("INSERT INTO conseils (sujet, decision, date) VALUES (?, ?, ?)",
-                      (sujet, decision, str(date_con)))
-            conn.commit()
-            st.success("✅ Décision ajoutée")
+    if st.button("إضافة صفقة"):
+        c.execute("INSERT INTO marches (numero, objet, entreprise, montant, statut) VALUES (?, ?, ?, ?, ?)",
+                  (numero, objet, entreprise, montant, statut))
+        conn.commit()
+        st.success("تمت الإضافة")
 
-    with tab2:
-        df = pd.read_sql("SELECT * FROM conseils", conn)
-        st.dataframe(df)
+    df = pd.read_sql("SELECT * FROM marches", conn)
+    st.dataframe(df)
 
-# =========================
-# EMPLOYES
-# =========================
-elif choice == "Employés":
-    st.subheader("👥 Gestion des Employés")
+# =====================
+# توليد محضر
+# =====================
+elif choice == "🧾 توليد محضر":
+    st.subheader("إنشاء محضر دورة")
 
-    tab1, tab2 = st.tabs(["Ajouter Employé", "Liste"])
+    titre = st.text_input("عنوان الدورة")
+    contenu = st.text_area("محتوى المحضر")
 
-    with tab1:
-        nom = st.text_input("Nom")
-        poste = st.text_input("Poste")
+    if st.button("إنشاء"):
+        texte = f"""
+        محضر دورة
 
-        if st.button("Ajouter Employé"):
-            c.execute("INSERT INTO employes (nom, poste) VALUES (?, ?)",
-                      (nom, poste))
-            conn.commit()
-            st.success("✅ Employé ajouté")
+        العنوان: {titre}
 
-    with tab2:
-        df = pd.read_sql("SELECT * FROM employes", conn)
-        st.dataframe(df)
+        المحتوى:
+        {contenu}
+
+        التاريخ: {date.today()}
+        """
+        st.download_button("تحميل المحضر", texte)
