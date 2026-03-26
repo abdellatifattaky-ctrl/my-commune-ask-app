@@ -1,138 +1,177 @@
 import streamlit as st
+import sqlite3
+import pandas as pd
+from datetime import date, datetime
 from docx import Document
+from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt
-from io import BytesIO
-from datetime import datetime
+import os
 
-# --- إعدادات النظام ---
-st.set_page_config(page_title="نظام جماعة أسكاون - الإصدار الكامل", layout="wide")
+# =====================
+# 1. إعدادات النظام والأرشفة
+# =====================
+st.set_page_config(page_title="نظام جماعة أسكاون - التدبير الرقمي للمجلس", layout="wide")
+DB_FILE = "askaoun_council_final.db"
+ARCHIVE_FOLDER = "archive_askaoun_official"
+os.makedirs(ARCHIVE_FOLDER, exist_ok=True)
 
-# دالة توليد ملفات Word مع ميزة فاصل الصفحات
-def create_invitations_docx(members_list, session_info):
-    doc = Document()
+conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+c = conn.cursor()
+
+# إنشاء الجداول المتكاملة (أعضاء، دورات، حضور، قرارات)
+c.execute('CREATE TABLE IF NOT EXISTS members (id INTEGER PRIMARY KEY, name TEXT, role TEXT)')
+c.execute('CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY, type TEXT, date_s TEXT, time_s TEXT, agenda TEXT, chairman TEXT, secretary TEXT)')
+c.execute('CREATE TABLE IF NOT EXISTS attendance (session_id INTEGER, member_id INTEGER, status TEXT, excuse TEXT)')
+c.execute('CREATE TABLE IF NOT EXISTS decisions (id INTEGER PRIMARY KEY, session_id INTEGER, point TEXT, result TEXT, v_for INTEGER, v_against INTEGER, v_abst INTEGER)')
+conn.commit()
+
+# =====================
+# 2. محرك التنسيق الإداري (Mise en Page)
+# =====================
+def apply_askaoun_style(doc):
+    """ضبط الهوامش والخطوط وفق المعايير الإدارية المغربية"""
+    for section in doc.sections:
+        section.top_margin, section.bottom_margin = Cm(2.5), Cm(2.5)
+        section.left_margin, section.right_margin = Cm(2.5), Cm(2.5)
     style = doc.styles['Normal']
-    style.font.name = 'Arial'
-    style.font.size = Pt(13)
+    font = style.font
+    font.name = 'Simplified Arabic'
+    font.size = Pt(14)
 
-    for i, m in enumerate(members_list):
-        # إضافة نص الاستدعاء
-        p1 = doc.add_paragraph("المملكة المغربية\nوزارة الداخلية\nعمالة تارودانت | دائرة تاليوين\nقيادة أسكاون | جماعة أسكاون")
-        p1.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p1.paragraph_format.rtl = True
+def add_official_header(doc, title_text):
+    """إضافة الرأسية الرسمية الثابتة لجماعة أسكاون"""
+    header_table = doc.add_table(rows=1, cols=2)
+    header_table.width = Cm(16)
+    r_cell = header_table.cell(0, 1).paragraphs[0]
+    r_cell.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    r_cell.add_run("المملكة المغربية\nوزارة الداخلية\nجهة سوس ماسة\nإقليم تارودانت\nدائرة تالوين\nقيادة أسكاون\nجماعة أسكاون\nمكتب المجلس").bold = True
+    l_cell = header_table.cell(0, 0).paragraphs[0]
+    l_cell.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    l_cell.add_run(f"أسكاون في: {date.today()}\nالرقم: ......./م.م/{date.today().year}")
+    doc.add_paragraph("\n")
+    t = doc.add_heading(title_text, level=1)
+    t.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        p2 = doc.add_paragraph(f"\nإلى السيد(ة): {m['name']}\nالصفة: {m['role']} بمجلس جماعة أسكاون")
-        p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p2.paragraph_format.rtl = True
-        p2.runs[0].bold = True
-
-        p3 = doc.add_paragraph(f"\nالموضوع: استدعاء لحضور أشغال {session_info['type']}.")
-        p3.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p3.paragraph_format.rtl = True
-        p3.runs[0].underline = True
-
-        content = f"""
-سلام تام بوجود مولانا الإمام،
-
-وبعد، بناءً على مقتضيات المواد 33، 35، و36 من القانون التنظيمي رقم 113.14 المتعلق بالجماعات، يتشرف رئيس مجلس جماعة أسكاون بدعوتكم لحضور أشغال {session_info['type']} التي سيعقدها المجلس يوم {session_info['date']} على الساعة {session_info['time']} بمقر الجماعة.
-
-جدول الأعمال:
-{session_info['agenda']}
-
-نرجو منكم الحضور في الموعد والمكان المحددين أعلاه.
-وتقبلوا فائق التقدير والاحترام.
-
-حرر بأسكاون في: {datetime.now().strftime('%Y-%m-%d')}
-توقيع رئيس المجلس
-        """
-        p4 = doc.add_paragraph(content)
-        p4.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p4.paragraph_format.rtl = True
-
-        # --- السر البرمجي: إضافة فاصل صفحات إلا بعد العضو الأخير ---
-        if i < len(members_list) - 1:
-            doc.add_page_break()
-            
-    buffer = BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    return buffer
-
-# دالة عامة للمحاضر العادية
-def create_general_docx(title, content_list):
+# =====================
+# 3. محرك توليد المحضر الراقي (برقية الولاء)
+# =====================
+def generate_royal_pv(s_info, attendance_df, decisions_df):
     doc = Document()
-    doc.add_heading(title, 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
-    for text in content_list:
-        p = doc.add_paragraph(text)
-        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p.paragraph_format.rtl = True
-    buffer = BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    return buffer
+    apply_askaoun_style(doc)
+    add_official_header(doc, f"محضر أشغال الدورة {s_info['type']}")
 
-# --- إدارة قاعدة البيانات في الذاكرة ---
-if 'members' not in st.session_state: st.session_state.members = []
-if 'staff' not in st.session_state: st.session_state.staff = [{"name": "ممثل السلطة المحلية", "role": "قائد قيادة أسكاون"}, {"name": "مدير المصالح", "role": "مدير مصالح الجماعة"}]
+    # الافتتاحية
+    p_intro = doc.add_paragraph()
+    p_intro.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p_intro.add_run(f"في يومه {s_info['date_s']}، وعلى الساعة {s_info['time_s']}، وبمقر جماعة أسكاون، اجتمع مجلس الجماعة في إطار دورته {s_info['type']}، برئاسة السيد {s_info['chairman']} وبحضور السيد قائد قيادة أسكاون ممثلاً للسلطة المحلية، والسيد {s_info['secretary']} كاتب المجلس.")
 
-# --- القائمة الجانبية ---
-with st.sidebar:
-    st.header("👤 سجل أعضاء أسكاون")
-    m_name = st.text_input("الاسم الكامل:")
-    m_role = st.selectbox("الصفة:", ["عضو", "رئيس المجلس", "نائب الرئيس", "كاتب المجلس", "نائب الكاتب", "رئيس لجنة", "مقرر لجنة"])
-    if st.button("تسجيل العضو"):
-        if m_name: 
-            st.session_state.members.append({"name": m_name, "role": m_role})
-            st.rerun()
+    # النصاب والغياب
+    doc.add_heading("📌 النصاب القانوني والوضعية القانونية:", level=2).alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    present = attendance_df[attendance_df['status'] == "حاضر"]
+    excused = attendance_df[attendance_df['status'] == "غائب بعذر"]
+    unexcused = attendance_df[attendance_df['status'] == "غائب بدون عذر"]
     
-    if st.button("🗑️ مسح الكل"):
-        st.session_state.members = []; st.rerun()
-
-# --- الواجهة الرئيسية ---
-st.title("🏛️ منصة تدبير أشغال جماعة أسكاون")
-tabs = st.tabs(["✉️ استدعاءات (ورقة لكل عضو)", "👥 لجان دائمة", "📝 محضر الدورة والتصويت"])
-
-# --- تبويب الاستدعاءات ---
-with tabs[0]:
-    st.subheader("توليد استدعاءات فردية بفاصل صفحات")
-    s_type = st.selectbox("نوع الدورة", ["دورة فبراير العادية", "دورة ماي العادية", "دورة أكتوبر العادية", "دورة استثنائية"])
-    col1, col2 = st.columns(2)
-    with col1: s_date = st.date_input("تاريخ الاجتماع")
-    with col2: s_time = st.time_input("التوقيت")
-    s_agenda = st.text_area("جدول الأعمال")
-
-    if st.button("توليد ملف Word (ورقة لكل عضو)"):
-        if st.session_state.members:
-            info = {'type': s_type, 'date': s_date, 'time': s_time, 'agenda': s_agenda}
-            docx_inv = create_invitations_docx(st.session_state.members, info)
-            st.download_button("تحميل الاستدعاءات 📄", docx_inv, file_name="invitations_askaoun.docx")
-        else:
-            st.error("سجل الأعضاء فارغ!")
-
-# --- تبويب اللجان ---
-with tabs[1]:
-    st.subheader("محضر اللجنة الدائمة")
-    c_name = st.selectbox("اللجنة:", ["لجنة الميزانية", "لجنة المرافق", "لجنة التنمية"])
-    c_present = [f"{m['name']} ({m['role']})" for m in st.session_state.members + st.session_state.staff if st.checkbox(f"حاضر: {m['name']}", key=f"c_{m['name']}")]
-    c_recommend = st.text_area("توصيات اللجنة")
-    if st.button("توليد محضر اللجنة"):
-        st.download_button("تحميل 📄", create_general_docx(f"محضر {c_name}", ["الحضور:\n" + "\n".join(c_present), f"التوصيات: {c_recommend}"]), file_name="comm.docx")
-
-# --- تبويب المحضر والتصويت ---
-with tabs[2]:
-    st.subheader("نتائج التصويت والمقررات")
-    s_present = [f"{m['name']} ({m['role']})" for m in st.session_state.members + st.session_state.staff if st.checkbox(f"حاضر في الدورة: {m['name']}", key=f"s_{m['name']}")]
+    q_p = doc.add_paragraph()
+    q_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    q_p.add_run(f"بناءً على المادة 42 من القانون التنظيمي 113.14، وبعد المناداة على الأعضاء، تبين حضور {len(present)} عضواً، مما يجعل النصاب القانوني مكتملاً.")
     
-    st.write("### 🗳️ التصويت على النقاط")
-    num_p = st.number_input("عدد النقاط:", min_value=1, value=1)
-    votes = []
-    for i in range(int(num_p)):
-        with st.expander(f"النقطة {i+1}"):
-            title = st.text_input(f"عنوان النقطة {i+1}", key=f"t_{i}")
-            y = st.number_input("موافق", key=f"y_{i}")
-            n = st.number_input("معارض", key=f"n_{i}")
-            votes.append(f"النقطة: {title}\nالنتيجة: {y} موافق، {n} معارض.")
+    if not excused.empty:
+        doc.add_paragraph(f"✔️ الغياب المبرر: {', '.join(excused['name'].tolist())}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    if not unexcused.empty:
+        doc.add_paragraph(f"❌ الغياب غير المبرر: {', '.join(unexcused['name'].tolist())}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-    if st.button("توليد المحضر النهائي"):
-        st.download_button("تحميل المحضر 📄", create_general_docx("محضر الدورة", ["الحضور:\n" + "\n".join(s_present), "التصويت:\n" + "\n".join(votes)]), file_name="final.docx")
-    
+    # المداولات
+    doc.add_heading("📑 المداولات والمصادقة:", level=2).alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    for _, row in decisions_df.iterrows():
+        dp = doc.add_paragraph()
+        dp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        dp.add_run(f"النقطة: {row['point']}").bold = True
+        doc.add_paragraph(f"القرار: {row['result']}. (الموافقون: {row['v_for']} | المعارضون: {row['v_against']})").alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+    # برقية الولاء (صفحة جديدة)
+    doc.add_page_break()
+    add_official_header(doc, "📜 برقية ولاء وإخلاص")
+    loyalty = (
+        "مرفوعة إلى مقام حضرة صاحب الجلالة الملك محمد السادس نصره الله وأيده.\n\n"
+        "نعم سيدي القائد الأعلى، بمناسبة اختتام أشغال الدورة " + s_info['type'] + 
+        " لمجلس جماعة أسكاون، يتشرف خديم جنابكم الشريف، رئيس المجلس، أصالة عن نفسه ونيابة عن كافة أعضاء المجلس وساكنة الجماعة، "
+        "بأن يرفع إلى مقامكم العالي بالله أزكى آيات الولاء والإخلاص، مشفوعة بصادق التعلق بالعرش العلوي المجيد.\n\n"
+        "حفظكم الله يا مولاي بما حفظ به الذكر الحكيم، وأبقاكم ذخراً وملاذاً لهذه الأمة. إنه سميع مجيب."
+    )
+    p_l = doc.add_paragraph(loyalty)
+    p_l.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    path = os.path.join(ARCHIVE_FOLDER, f"Final_PV_Askaoun_{s_info['id']}.docx")
+    doc.save(path)
+    return path
+
+# =====================
+# 4. واجهة الاستخدام (Streamlit)
+# =====================
+st.sidebar.title("🏛️ بوابة جماعة أسكاون")
+menu = ["👥 الأعضاء", "📅 برمجة الدورة", "📊 ضبط الحضور", "📝 تسجيل المداولات", "🚀 توليد المحضر النهائي"]
+choice = st.sidebar.selectbox("القائمة الإدارية", menu)
+
+if choice == "👥 الأعضاء":
+    st.subheader("إدارة الأعضاء")
+    with st.form("m"):
+        n = st.text_input("الاسم الكامل")
+        r = st.selectbox("الصفة", ["رئيس المجلس", "نائب الرئيس", "كاتب المجلس", "مستشار"])
+        if st.form_submit_button("حفظ"):
+            c.execute("INSERT INTO members (name, role) VALUES (?,?)", (n, r))
+            conn.commit()
+    st.table(pd.read_sql("SELECT * FROM members", conn))
+
+elif choice == "📅 برمجة الدورة":
+    st.subheader("برمجة دورة جديدة")
+    with st.form("s"):
+        t = st.selectbox("الدورة", ["عادية فبراير", "عادية ماي", "عادية أكتوبر", "استثنائية"])
+        d = st.date_input("التاريخ")
+        tm = st.time_input("التوقيت")
+        chair = st.text_input("الرئيس", "رئيس المجلس")
+        sec = st.text_input("الكاتب")
+        ag = st.text_area("جدول الأعمال")
+        if st.form_submit_button("حفظ الدورة"):
+            c.execute("INSERT INTO sessions (type, date_s, time_s, agenda, chairman, secretary) VALUES (?,?,?,?,?,?)", (t, str(d), str(tm), ag, chair, sec))
+            conn.commit()
+
+elif choice == "📊 ضبط الحضور":
+    st.subheader("تتبع حضور الأعضاء (المادة 67)")
+    s_df = pd.read_sql("SELECT id, type FROM sessions", conn)
+    if not s_df.empty:
+        s_id = st.selectbox("اختر الدورة", s_df['id'])
+        m_df = pd.read_sql("SELECT * FROM members", conn)
+        for _, m in m_df.iterrows():
+            col1, col2 = st.columns(2)
+            stat = col1.radio(f"{m['name']}", ["حاضر", "غائب بعذر", "غائب بدون عذر"], key=f"m_{m['id']}")
+            exc = col2.text_input("العذر", key=f"e_{m['id']}")
+            if st.button(f"تحديث {m['name']}", key=f"b_{m['id']}"):
+                c.execute("REPLACE INTO attendance (session_id, member_id, status, excuse) VALUES (?,?,?,?)", (s_id, m['id'], stat, exc))
+                conn.commit()
+
+elif choice == "📝 تسجيل المداولات":
+    st.subheader("تسجيل قرارات الدورة")
+    s_df = pd.read_sql("SELECT id, type FROM sessions", conn)
+    if not s_df.empty:
+        s_id = st.selectbox("الدورة", s_df['id'])
+        with st.form("d"):
+            pt = st.text_input("النقطة")
+            res = st.selectbox("القرار", ["مصادقة بالإجماع", "مصادقة بالأغلبية", "رفض"])
+            v_f = st.number_input("نعم", 0)
+            v_a = st.number_input("لا", 0)
+            if st.form_submit_button("حفظ القرار"):
+                c.execute("INSERT INTO decisions (session_id, point, result, v_for, v_against) VALUES (?,?,?,?,?)", (s_id, pt, res, v_f, v_a))
+                conn.commit()
+
+elif choice == "🚀 توليد المحضر النهائي":
+    st.subheader("إصدار المحضر الرسمي الراقي")
+    s_df = pd.read_sql("SELECT * FROM sessions", conn)
+    if not s_df.empty:
+        s_id = st.selectbox("اختر الدورة للتوليد", s_df['id'])
+        if st.button("🚀 توليد المحضر وبرقية الولاء"):
+            s_data = s_df[s_df['id'] == s_id].iloc[0]
+            att_df = pd.read_sql(f"SELECT m.name, a.status FROM attendance a JOIN members m ON a.member_id = m.id WHERE a.session_id={s_id}", conn)
+            dec_df = pd.read_sql(f"SELECT * FROM decisions WHERE session_id={s_id}", conn)
+            path = generate_royal_pv(s_data, att_df, dec_df)
+            with open(path, "rb") as f:
+                st.download_button("📥 تحميل المحضر الرسمي", f, file_name=os.path.basename(path))
