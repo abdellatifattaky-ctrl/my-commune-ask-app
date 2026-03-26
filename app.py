@@ -135,3 +135,4 @@ with tabs[2]:
 
     if st.button("توليد المحضر النهائي"):
         st.download_button("تحميل المحضر 📄", create_general_docx("محضر الدورة", ["الحضور:\n" + "\n".join(s_present), "التصويت:\n" + "\n".join(votes)]), file_name="final.docx")
+    
