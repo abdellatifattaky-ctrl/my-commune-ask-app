@@ -1,123 +1,136 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
-from datetime import date, datetime
 from docx import Document
-from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-import os
+from docx.shared import Inches, Pt, Cm
+from io import BytesIO
+from datetime import date
+from num2words import num2words
 
-# =====================
-# 1. الإعدادات العامة والأرشفة
-# =====================
-st.set_page_config(page_title="نظام جماعة أسكاون الرقمي الشامل", layout="wide")
-DB_FILE = "askaoun_integrated_system.db"
-ARCHIVE_FOLDER = "archive_askaoun_official"
-os.makedirs(ARCHIVE_FOLDER, exist_ok=True)
+def format_to_words_fr(amount_str):
+    try:
+        val = float(str(amount_str).replace(' ', '').replace(',', ''))
+        words = num2words(val, lang='fr').upper()
+        cents = int(round((val - int(val)) * 100))
+        text = f"{words} DIRHAMS"
+        if cents > 0:
+            text += f" ET {num2words(cents, lang='fr').upper()} CENTIMES"
+        else: text += " ,00CTS"
+        return text
+    except: return "________________"
 
-conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-c = conn.cursor()
+st.set_page_config(page_title="Commune Askaouen - Système PV", layout="wide")
 
-# الجداول: أعضاء، دورات، حضور، قرارات، وتقارير اللجن
-c.execute('CREATE TABLE IF NOT EXISTS members (id INTEGER PRIMARY KEY, name TEXT, role TEXT)')
-c.execute('CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY, type TEXT, date_s TEXT, time_s TEXT, agenda TEXT, chairman TEXT, secretary TEXT)')
-c.execute('CREATE TABLE IF NOT EXISTS attendance (session_id INTEGER, member_id INTEGER, status TEXT, excuse TEXT)')
-c.execute('CREATE TABLE IF NOT EXISTS decisions (id INTEGER PRIMARY KEY, session_id INTEGER, point TEXT, result TEXT, v_for INTEGER, v_against INTEGER, v_abst INTEGER)')
-c.execute('CREATE TABLE IF NOT EXISTS committee_reports (id INTEGER PRIMARY KEY, session_id INTEGER, comm_name TEXT, comm_date TEXT, comm_content TEXT, comm_recommendations TEXT)')
-conn.commit()
+# أعضاء اللجنة
+st.sidebar.header("Membres de la Commission")
+p_name = st.sidebar.text_input("Président", "MOHAMED ZILALI")
+d_name = st.sidebar.text_input("Directeur du service", "M BAREK BAK")
+t_name = st.sidebar.text_input("Technicien", "ABDELLATIF ATTAKY")
 
-# =====================
-# 2. محرك التنسيق الإداري (Mise en Page)
-# =====================
-def apply_askaoun_style(doc):
-    for section in doc.sections:
-        section.top_margin, section.bottom_margin = Cm(2.5), Cm(2.5)
-        section.left_margin, section.right_margin = Cm(2.5), Cm(2.5)
-    style = doc.styles['Normal']
-    font = style.font
-    font.name = 'Simplified Arabic'
-    font.size = Pt(14)
+st.title("🏛️ نظام استخراج المحاضر - جماعة أسكاون")
 
-def add_official_header(doc, title_text):
-    header_table = doc.add_table(rows=1, cols=2)
-    header_table.width = Cm(16)
-    r_cell = header_table.cell(0, 1).paragraphs[0]
-    r_cell.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    r_cell.add_run("المملكة المغربية\nوزارة الداخلية\nجهة سوس ماسة\nإقليم تارودانت\nدائرة تالوين\nقيادة أسكاون\nجماعة أسكاون\nمكتب المجلس").bold = True
-    l_cell = header_table.cell(0, 0).paragraphs[0]
-    l_cell.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    l_cell.add_run(f"أسكاون في: {date.today()}\nالرقم: ......./م.م/{date.today().year}")
-    doc.add_paragraph("\n")
-    t = doc.add_heading(title_text, level=1)
-    t.alignment = WD_ALIGN_PARAGRAPH.CENTER
+with st.expander("📝 Détails Administratifs", expanded=True):
+    c1, c2 = st.columns(2)
+    num_bc = c1.text_input("N° BC", "01/ASK/2026")
+    date_pub = c2.date_input("Date de publication", date(2025, 3, 25))
+    obj_bc = st.text_area("Objet", "Achat de matériel...")
 
-# =====================
-# 3. محركات توليد الوثائق (اللجن والمحضر الختامي)
-# =====================
-def generate_committee_doc(session_id, comm_name, comm_date, content, recommendations):
+# جدول المتنافسين
+st.subheader("📊 Liste des concurrents")
+df_init = pd.DataFrame([
+    {"Rang": 1, "Nom": "STE OUBRAIM SARL", "Montant": "69840.00"},
+    {"Rang": 2, "Nom": "DECO GRC", "Montant": "93120.00"},
+    {"Rang": 3, "Nom": "AIT MOUMOU REALISATION", "Montant": "102432.00"},
+    {"Rang": 4, "Nom": "KADEM SARL", "Montant": "111744.00"},
+    {"Rang": 5, "Nom": "TOUZANI 2ZD", "Montant": "114072.00"}
+])
+data = st.data_editor(df_init, use_container_width=True)
+
+st.divider()
+c_pv1, c_pv2, c_pv3 = st.columns(3)
+pv_num = c_pv1.selectbox("Numéro du PV:", [1, 2, 3, 4, 5, 6])
+reunion_date = c_pv3.date_input("Date de la séance", date.today())
+reunion_hour = st.text_input("Heure", "10h00mn")
+
+is_infructueux = False
+is_final_attr = False
+if pv_num == 6:
+    res_6 = st.radio("Résultat du 6éme PV:", ["Attribution (إسناد الشركة 5)", "B.C Infructueux (غير مثمر)"])
+    is_infructueux = (res_6 == "B.C Infructueux (غير مثمر)")
+    is_final_attr = (res_6 == "Attribution (إسناد الشركة 5)")
+else:
+    is_final_attr = c_pv2.checkbox("✅ Est-ce le PV d'attribution finale ?")
+
+if st.button("🚀 إنشاء المحضر"):
     doc = Document()
-    apply_askaoun_style(doc)
-    add_official_header(doc, f"محضر اجتماع {comm_name}")
+    section = doc.sections[0]
+    section.top_margin, section.bottom_margin = Cm(2), Cm(2)
+    section.left_margin, section.right_margin = Cm(2.5), Cm(2)
+
+    header = section.header
+    htable = header.add_table(1, 2, Inches(6.5))
+    htable.rows[0].cells[0].paragraphs[0].text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nCOMMUNE D'ASKAOUN"
+    htable.rows[0].cells[1].paragraphs[0].text = "المملكة المغربية\nوزارة الداخلية\nجماعة أسكاون"
+    htable.rows[0].cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+    doc.add_paragraph("\n")
+    doc.add_heading(f"{pv_num}éme Procès verbal", 1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph("De la commission d’ouverture des plis\nProcédure Bon de commande").alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    doc.add_paragraph(f"Objet : {obj_bc}").bold = True
+    doc.add_paragraph(f"Le {reunion_date.strftime('%d/%m/%Y')} à {reunion_hour}, la commission d’ouverture des plis composée comme suit :")
+    doc.add_paragraph(f"- M. {p_name} : Président de la commission\n- M. {d_name} : Directeur du service\n- M. {t_name} : Technicien de la commune")
     
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    p.add_run(f"بناءً على مقتضيات القانون التنظيمي 113.14، اجتمعت {comm_name} بتاريخ {comm_date} بمقر الجماعة لدراسة النقط المحالة عليها من طرف مكتب المجلس.\n").bold = False
-    
-    doc.add_heading("📌 مداولات اللجنة:", level=2).alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    doc.add_paragraph(content).alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    
-    doc.add_heading("💡 توصيات اللجنة:", level=2).alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    doc.add_paragraph(recommendations).alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    
-    path = os.path.join(ARCHIVE_FOLDER, f"تقرير_{comm_name}_{session_id}.docx")
-    doc.save(path)
-    return path
+    doc.add_paragraph(f"S’est réunie dans la salle de réunion de la commune sur invitation du président concernant l’avis d’achat du bon de commande n° {num_bc} publié le : {date_pub.strftime('%d/%m/%Y')} sur le portail des marchés publics, en application des dispositions de l’article 91 du décret n° 2-22-431 (8 mars 2023) relatif aux marchés publics.")
 
-# (دالة generate_royal_pv تبقى كما هي في الرد السابق مع برقية الولاء)
+    if pv_num == 1:
+        # نص المحضر الأول الحرفي
+        doc.add_paragraph("Après vérification du portail des marchés publics, les soumissionnaires qui ont déposé leurs offres de prix électroniquement sont :")
+        tab = doc.add_table(rows=1, cols=3); tab.style = 'Table Grid'
+        hdr = tab.rows[0].cells; hdr[0].text, hdr[1].text, hdr[2].text = 'Rang', 'Concurrent', 'Montant TTC'
+        for _, r in data.iterrows():
+            row = tab.add_row().cells
+            row[0].text, row[1].text, row[2].text = str(r['Rang']), r['Nom'], f"{r['Montant']} MAD"
+        
+        curr_company = data.iloc[0]['Nom']
+        curr_amount = data.iloc[0]['Montant']
+        amt_w = format_to_words_fr(curr_amount)
+        doc.add_paragraph(f"\nAprès examen des offres, le président de la commission invite la société : {curr_company} qui est le moins disant pour un montant de {curr_amount} Dhs TTC ({amt_w}) à confirmer son offre par lettre de confirmation.")
 
-# =====================
-# 4. واجهة المستخدم (Streamlit)
-# =====================
-st.sidebar.title("🏛️ بوابة جماعة أسكاون")
-menu = ["👥 الأعضاء", "📅 برمجة الدورة", "📜 تقارير اللجان", "📊 ضبط الحضور", "📝 تسجيل المداولات", "🚀 المحضر النهائي"]
-choice = st.sidebar.selectbox("القائمة الإدارية", menu)
+    else:
+        # المحاضر من 2 إلى 6
+        idx = pv_num - 1 if pv_num <= 5 else 4
+        prev_idx = idx - 1
+        prev_company = data.iloc[prev_idx]['Nom']
+        curr_company = data.iloc[idx]['Nom']
+        curr_amount = data.iloc[idx]['Montant']
+        amt_w = format_to_words_fr(curr_amount)
 
-if choice == "👥 الأعضاء":
-    st.subheader("إدارة الأعضاء")
-    with st.form("m"):
-        n = st.text_input("الاسم الكامل")
-        r = st.selectbox("الصفة", ["رئيس المجلس", "نائب الرئيس", "كاتب المجلس", "مستشار"])
-        if st.form_submit_button("حفظ"):
-            c.execute("INSERT INTO members (name, role) VALUES (?,?)", (n, r))
-            conn.commit()
-    st.table(pd.read_sql("SELECT * FROM members", conn))
+        if is_infructueux:
+            doc.add_paragraph(f"Après vérification du portail des marchés publics, la commission constate que la société {curr_company} n’a pas confirmé son offre par lettre de confirmation.")
+            p_inf = doc.add_paragraph("\nPAR CONSEQUENT, LA COMMISSION DECLARE QUE CE BON DE COMMANDE EST :")
+            p_inf.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            res_inf = doc.add_paragraph("INFRUCTUEUX")
+            res_inf.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            res_inf.bold = True; res_inf.runs[0].font.size = Pt(16)
+        
+        elif is_final_attr:
+            # النص الحرفي للإسناد الذي أرسلته
+            doc.add_paragraph(f"Après vérification du portail des marchés publics, la commission constate que la société {curr_company} a confirmé son offre par lettre de confirmation.")
+            p_res = doc.add_paragraph(f"Le président VALIDE la confirmation et ATTRIBUE le bon de commande à la société {curr_company} pour un montant de : {curr_amount} Dhs TTC ({amt_w}).")
+            p_res.bold = True
+        
+        else:
+            # نص الاستدعاء للمحاضر الوسطى (2، 3، 4...)
+            doc.add_paragraph(f"Après vérification du portail des marchés publics, la commission constate que la société {prev_company} n’a pas confirmé son offre par lettre de confirmation.")
+            doc.add_paragraph(f"Après écartement de la société {prev_company}, le président de la commission invite la société : {curr_company} qui est classé le {pv_num}éme pour un montant de {curr_amount} Dhs TTC ({amt_w}) à confirmer son offre par lettre de confirmation.")
 
-elif choice == "📅 برمجة الدورة":
-    st.subheader("برمجة دورة جديدة")
-    with st.form("s"):
-        t = st.selectbox("الدورة", ["عادية فبراير", "عادية ماي", "عادية أكتوبر", "استثنائية"])
-        d = st.date_input("التاريخ")
-        tm = st.time_input("التوقيت")
-        chair = st.text_input("الرئيس", "رئيس المجلس")
-        sec = st.text_input("الكاتب")
-        ag = st.text_area("جدول الأعمال")
-        if st.form_submit_button("حفظ الدورة"):
-            c.execute("INSERT INTO sessions (type, date_s, time_s, agenda, chairman, secretary) VALUES (?,?,?,?,?,?)", (t, str(d), str(tm), ag, chair, sec))
-            conn.commit()
+    doc.add_paragraph(f"\nFait à Askaouen, le {reunion_date.strftime('%d/%m/%Y')}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    sig_tab = doc.add_table(rows=2, cols=3)
+    sig_tab.rows[0].cells[0].text = "Le Président"; sig_tab.rows[0].cells[1].text = "Le Directeur"; sig_tab.rows[0].cells[2].text = "Le Technicien"
+    sig_tab.rows[1].cells[0].text, sig_tab.rows[1].cells[1].text, sig_tab.rows[1].cells[2].text = p_name, d_name, t_name
+    for r in sig_tab.rows:
+        for c in r.cells: c.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-elif choice == "📜 تقارير اللجان":
-    st.subheader("📝 صياغة محاضر اللجان الدائمة")
-    s_df = pd.read_sql("SELECT id, type FROM sessions", conn)
-    if not s_df.empty:
-        s_id = st.selectbox("الدورة المرتبطة", s_df['id'])
-        with st.form("comm"):
-            c_name = st.selectbox("اسم اللجنة", ["لجنة الميزانية والشؤون المالية", "لجنة المرافق العمومية والخدمات", "لجنة التنمية البشرية والشؤون الاجتماعية"])
-            c_date = st.date_input("تاريخ اجتماع اللجنة")
-            c_content = st.text_area("خلاصة المداولات (المناقشة)")
-            c_recom = st.text_area("التوصيات النهائية للجنة")
-            if st.form_submit_button("توليد محضر اللجنة بصيغة Word"):
-                path = generate_committee_doc(s_id, c_name, str(c_date), c_content, c_recom)
-                with open(path, "rb") as f:
-                    st.download_button(f"📥 تحميل محضر {c_name}", f, file_name=os.path.basename(path))
-
-# (أقسام ضبط الحضور وتسجيل المداولات والمحضر النهائي تبقى كما في النسخة السابقة لضمان التكامل)
+    bio = BytesIO(); doc.save(bio)
+    st.download_button(f"📥 تحميل المحضر رقم {pv_num}", bio.getvalue(), f"PV_{pv_num}_Askaouen.docx")
