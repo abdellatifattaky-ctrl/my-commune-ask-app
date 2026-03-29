@@ -1,102 +1,105 @@
-import streamlit as st
 import sqlite3
 from datetime import date
+from io import BytesIO
 
-# =========================
-# PAGE CONFIG
-# =========================
+import pandas as pd
+import streamlit as st
+from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Pt
+from num2words import num2words
+
+
+# =========================================================
+# CONFIG
+# =========================================================
 st.set_page_config(
     page_title="نظام تدبير مصالح الجماعة",
     page_icon="🏛️",
     layout="wide",
 )
 
-# =========================
-# CUSTOM CSS
-# =========================
-st.markdown("""
-<style>
-html, body, [class*="css"]  {
-    direction: rtl;
-    text-align: right;
-    font-family: "Arial", sans-serif;
-}
-.block-container {
-    padding-top: 1.2rem;
-    padding-bottom: 1rem;
-}
-.main-title {
-    background: linear-gradient(135deg, #0f766e, #115e59);
-    color: white;
-    padding: 22px;
-    border-radius: 18px;
-    margin-bottom: 18px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
-}
-.main-title h1 {
-    margin: 0;
-    font-size: 32px;
-}
-.main-title p {
-    margin: 6px 0 0 0;
-    opacity: 0.95;
-}
-.card {
-    background: #ffffff;
-    padding: 18px;
-    border-radius: 18px;
-    border: 1px solid #e5e7eb;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
-    margin-bottom: 14px;
-}
-.small-card {
-    background: #f8fafc;
-    padding: 16px;
-    border-radius: 16px;
-    border: 1px solid #e2e8f0;
-    text-align: center;
-}
-.small-card h3 {
-    margin: 0;
-    color: #0f766e;
-    font-size: 28px;
-}
-.small-card p {
-    margin: 6px 0 0 0;
-    color: #475569;
-}
-.section-title {
-    font-size: 22px;
-    font-weight: 700;
-    color: #0f172a;
-    margin: 8px 0 10px 0;
-}
-.stTabs [data-baseweb="tab-list"] {
-    gap: 8px;
-}
-.stTabs [data-baseweb="tab"] {
-    border-radius: 12px;
-    background-color: #f1f5f9;
-    padding: 8px 14px;
-}
-.stTabs [aria-selected="true"] {
-    background-color: #0f766e !important;
-    color: white !important;
-}
-</style>
-""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <style>
+    html, body, [class*="css"]  {
+        direction: rtl;
+        text-align: right;
+        font-family: "Arial", sans-serif;
+    }
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+    .main-title {
+        background: linear-gradient(135deg, #0f766e, #115e59);
+        color: white;
+        padding: 22px;
+        border-radius: 18px;
+        margin-bottom: 18px;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+    }
+    .main-title h1 {
+        margin: 0;
+        font-size: 32px;
+    }
+    .main-title p {
+        margin: 6px 0 0 0;
+        opacity: 0.95;
+    }
+    .small-card {
+        background: #f8fafc;
+        padding: 16px;
+        border-radius: 16px;
+        border: 1px solid #e2e8f0;
+        text-align: center;
+    }
+    .small-card h3 {
+        margin: 0;
+        color: #0f766e;
+        font-size: 28px;
+    }
+    .small-card p {
+        margin: 6px 0 0 0;
+        color: #475569;
+    }
+    .section-title {
+        font-size: 22px;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 8px 0 10px 0;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 12px;
+        background-color: #f1f5f9;
+        padding: 8px 14px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #0f766e !important;
+        color: white !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-# =========================
+
+# =========================================================
 # DATABASE
-# =========================
+# =========================================================
 def get_conn():
     return sqlite3.connect("commune.db", check_same_thread=False)
+
 
 def init_db():
     conn = get_conn()
     c = conn.cursor()
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS correspondences (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             reference TEXT,
@@ -106,9 +109,11 @@ def init_db():
             status TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS licenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             applicant_name TEXT,
@@ -117,9 +122,11 @@ def init_db():
             notes TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS employees (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             full_name TEXT,
@@ -128,9 +135,11 @@ def init_db():
             status TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS projects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project_name TEXT,
@@ -139,9 +148,11 @@ def init_db():
             status TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS procurements (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             reference TEXT,
@@ -155,9 +166,11 @@ def init_db():
             status TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS cps (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             procurement_ref TEXT,
@@ -171,9 +184,11 @@ def init_db():
             notes TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS procurement_launches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             procurement_ref TEXT,
@@ -187,9 +202,11 @@ def init_db():
             notes TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS procurement_openings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             procurement_ref TEXT,
@@ -200,9 +217,11 @@ def init_db():
             notes TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS procurement_evaluations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             procurement_ref TEXT,
@@ -215,9 +234,11 @@ def init_db():
             notes TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS procurement_attributions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             procurement_ref TEXT,
@@ -228,9 +249,11 @@ def init_db():
             notes TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS os_orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             procurement_ref TEXT,
@@ -241,9 +264,11 @@ def init_db():
             notes TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS pvs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             procurement_ref TEXT,
@@ -252,9 +277,11 @@ def init_db():
             content TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS bc_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             bc_ref TEXT,
@@ -268,9 +295,11 @@ def init_db():
             notes TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS bc_consultations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             bc_ref TEXT,
@@ -281,9 +310,11 @@ def init_db():
             notes TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS bc_offers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             bc_ref TEXT,
@@ -295,9 +326,11 @@ def init_db():
             notes TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS bc_awards (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             bc_ref TEXT,
@@ -309,9 +342,11 @@ def init_db():
             notes TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS bc_executions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             bc_ref TEXT,
@@ -323,9 +358,11 @@ def init_db():
             notes TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS bc_receptions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             bc_ref TEXT,
@@ -339,9 +376,11 @@ def init_db():
             notes TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
-    c.execute("""
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS bc_opening_pvs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             bc_ref TEXT,
@@ -356,10 +395,12 @@ def init_db():
             pv_content TEXT,
             created_at TEXT
         )
-    """)
+        """
+    )
 
     conn.commit()
     conn.close()
+
 
 def insert_record(query, values):
     conn = get_conn()
@@ -367,12 +408,14 @@ def insert_record(query, values):
     conn.commit()
     conn.close()
 
+
 def fetch_all(query, params=()):
     conn = get_conn()
     conn.row_factory = sqlite3.Row
     rows = conn.execute(query, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
 
 def count_rows(table_name):
     conn = get_conn()
@@ -382,11 +425,50 @@ def count_rows(table_name):
     conn.close()
     return count
 
+
+def fetch_bc_refs():
+    rows = fetch_all("SELECT bc_ref FROM bc_records WHERE bc_ref IS NOT NULL AND bc_ref != '' ORDER BY id DESC")
+    return [r["bc_ref"] for r in rows]
+
+
+def fetch_bc_record(bc_ref):
+    rows = fetch_all("SELECT * FROM bc_records WHERE bc_ref = ? ORDER BY id DESC LIMIT 1", (bc_ref,))
+    return rows[0] if rows else None
+
+
+def fetch_bc_offers_sorted(bc_ref):
+    return fetch_all(
+        """
+        SELECT supplier_name, offer_ref, offer_date, offer_amount, offer_status, notes
+        FROM bc_offers
+        WHERE bc_ref = ?
+        ORDER BY offer_amount ASC
+        """,
+        (bc_ref,),
+    )
+
+
+def format_to_words_fr(amount_value):
+    try:
+        val = float(amount_value)
+        words = num2words(val, lang="fr").upper()
+        cents = int(round((val - int(val)) * 100))
+        text = f"{words} DIRHAMS"
+        if cents > 0:
+            text += f" ET {num2words(cents, lang='fr').upper()} CENTIMES"
+        else:
+            text += " ,00 CTS"
+        return text
+    except Exception:
+        return "________________"
+
+
 init_db()
 
-# =========================
+
+# =========================================================
 # SIDEBAR
-# =========================
+# =========================================================
 with st.sidebar:
     st.markdown("## 🏛️ نظام الجماعة")
     st.markdown("إدارة يومية للمصالح والصفقات وBC")
@@ -409,52 +491,77 @@ with st.sidebar:
     st.write("**المستخدم:** مدير المصالح")
     st.info("البيانات تحفظ محليًا في قاعدة SQLite: commune.db")
 
-# =========================
-# HEADER
-# =========================
-st.markdown("""
-<div class="main-title">
-    <h1>نظام تدبير مصالح الجماعة</h1>
-    <p>نسخة احترافية بواجهة عربية محسنة — Streamlit + SQLite</p>
-</div>
-""", unsafe_allow_html=True)
 
-# =========================
+# =========================================================
+# HEADER
+# =========================================================
+st.markdown(
+    """
+    <div class="main-title">
+        <h1>نظام تدبير مصالح الجماعة</h1>
+        <p>نسخة احترافية جاهزة لـ GitHub و Streamlit Community Cloud</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# =========================================================
 # DASHBOARD
-# =========================
+# =========================================================
 if menu == "لوحة القيادة":
     st.markdown('<div class="section-title">لوحة القيادة</div>', unsafe_allow_html=True)
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
-        st.markdown(f'<div class="small-card"><h3>{count_rows("correspondences")}</h3><p>المراسلات</p></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="small-card"><h3>{count_rows("correspondences")}</h3><p>المراسلات</p></div>',
+            unsafe_allow_html=True,
+        )
     with c2:
-        st.markdown(f'<div class="small-card"><h3>{count_rows("licenses")}</h3><p>الرخص</p></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="small-card"><h3>{count_rows("licenses")}</h3><p>الرخص</p></div>',
+            unsafe_allow_html=True,
+        )
     with c3:
-        st.markdown(f'<div class="small-card"><h3>{count_rows("employees")}</h3><p>الموظفون</p></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="small-card"><h3>{count_rows("employees")}</h3><p>الموظفون</p></div>',
+            unsafe_allow_html=True,
+        )
     with c4:
-        st.markdown(f'<div class="small-card"><h3>{count_rows("projects")}</h3><p>المشاريع</p></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="small-card"><h3>{count_rows("projects")}</h3><p>المشاريع</p></div>',
+            unsafe_allow_html=True,
+        )
     with c5:
-        st.markdown(f'<div class="small-card"><h3>{count_rows("procurements")}</h3><p>الصفقات</p></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="small-card"><h3>{count_rows("procurements")}</h3><p>الصفقات</p></div>',
+            unsafe_allow_html=True,
+        )
     with c6:
-        st.markdown(f'<div class="small-card"><h3>{count_rows("bc_records")}</h3><p>BC</p></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="small-card"><h3>{count_rows("bc_records")}</h3><p>BC</p></div>',
+            unsafe_allow_html=True,
+        )
 
-    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("ملخص الوضعية")
-    dashboard_data = [
-        {"الوحدة": "المراسلات", "عدد السجلات": count_rows("correspondences"), "الوضعية": "نشطة"},
-        {"الوحدة": "الرخص", "عدد السجلات": count_rows("licenses"), "الوضعية": "قيد المعالجة"},
-        {"الوحدة": "الموظفون", "عدد السجلات": count_rows("employees"), "الوضعية": "مستقرة"},
-        {"الوحدة": "المشاريع", "عدد السجلات": count_rows("projects"), "الوضعية": "تتبع مستمر"},
-        {"الوحدة": "الصفقات العمومية", "عدد السجلات": count_rows("procurements"), "الوضعية": "جارية"},
-        {"الوحدة": "سندات الطلب BC", "عدد السجلات": count_rows("bc_records"), "الوضعية": "جارية"},
-    ]
-    st.dataframe(dashboard_data, use_container_width=True, hide_index=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.dataframe(
+        [
+            {"الوحدة": "المراسلات", "عدد السجلات": count_rows("correspondences"), "الوضعية": "نشطة"},
+            {"الوحدة": "الرخص", "عدد السجلات": count_rows("licenses"), "الوضعية": "قيد المعالجة"},
+            {"الوحدة": "الموظفون", "عدد السجلات": count_rows("employees"), "الوضعية": "مستقرة"},
+            {"الوحدة": "المشاريع", "عدد السجلات": count_rows("projects"), "الوضعية": "تتبع مستمر"},
+            {"الوحدة": "الصفقات العمومية", "عدد السجلات": count_rows("procurements"), "الوضعية": "جارية"},
+            {"الوحدة": "سندات الطلب BC", "عدد السجلات": count_rows("bc_records"), "الوضعية": "جارية"},
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
 
-# =========================
+
+# =========================================================
 # CORRESPONDENCES
-# =========================
+# =========================================================
 elif menu == "المراسلات":
     st.markdown('<div class="section-title">تدبير المراسلات</div>', unsafe_allow_html=True)
 
@@ -467,21 +574,22 @@ elif menu == "المراسلات":
         with c2:
             subject = st.text_input("الموضوع")
             status = st.selectbox("الحالة", ["قيد المعالجة", "محالة", "منتهية"])
-        submitted = st.form_submit_button("حفظ المراسلة")
 
+        submitted = st.form_submit_button("حفظ المراسلة")
         if submitted:
             insert_record(
                 "INSERT INTO correspondences (reference, subject, ctype, department, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (reference, subject, ctype, department, status, str(date.today()))
+                (reference, subject, ctype, department, status, str(date.today())),
             )
             st.success("تم حفظ المراسلة بنجاح.")
 
     rows = fetch_all("SELECT * FROM correspondences ORDER BY id DESC")
     st.dataframe(rows, use_container_width=True, hide_index=True)
 
-# =========================
+
+# =========================================================
 # LICENSES
-# =========================
+# =========================================================
 elif menu == "الرخص":
     st.markdown('<div class="section-title">تدبير الرخص</div>', unsafe_allow_html=True)
 
@@ -493,21 +601,22 @@ elif menu == "الرخص":
         with c2:
             status = st.selectbox("الحالة", ["قيد الدراسة", "مقبولة", "مرفوضة"])
             notes = st.text_area("ملاحظات")
-        submitted = st.form_submit_button("حفظ الطلب")
 
+        submitted = st.form_submit_button("حفظ الطلب")
         if submitted:
             insert_record(
                 "INSERT INTO licenses (applicant_name, license_type, status, notes, created_at) VALUES (?, ?, ?, ?, ?)",
-                (applicant_name, license_type, status, notes, str(date.today()))
+                (applicant_name, license_type, status, notes, str(date.today())),
             )
             st.success("تم حفظ الطلب.")
 
     rows = fetch_all("SELECT * FROM licenses ORDER BY id DESC")
     st.dataframe(rows, use_container_width=True, hide_index=True)
 
-# =========================
+
+# =========================================================
 # EMPLOYEES
-# =========================
+# =========================================================
 elif menu == "الموظفون":
     st.markdown('<div class="section-title">تدبير الموظفين</div>', unsafe_allow_html=True)
 
@@ -519,21 +628,22 @@ elif menu == "الموظفون":
         with c2:
             position = st.text_input("الوظيفة")
             status = st.selectbox("الحالة", ["حاضر", "غائب", "في رخصة"])
-        submitted = st.form_submit_button("حفظ الموظف")
 
+        submitted = st.form_submit_button("حفظ الموظف")
         if submitted:
             insert_record(
                 "INSERT INTO employees (full_name, department, position, status, created_at) VALUES (?, ?, ?, ?, ?)",
-                (full_name, department, position, status, str(date.today()))
+                (full_name, department, position, status, str(date.today())),
             )
             st.success("تم حفظ الموظف.")
 
     rows = fetch_all("SELECT * FROM employees ORDER BY id DESC")
     st.dataframe(rows, use_container_width=True, hide_index=True)
 
-# =========================
+
+# =========================================================
 # PROJECTS
-# =========================
+# =========================================================
 elif menu == "المشاريع":
     st.markdown('<div class="section-title">تتبع المشاريع</div>', unsafe_allow_html=True)
 
@@ -545,12 +655,12 @@ elif menu == "المشاريع":
         with c2:
             budget = st.text_input("الميزانية")
             status = st.selectbox("الحالة", ["متقدم", "متوسط", "متأخر"])
-        submitted = st.form_submit_button("حفظ المشروع")
 
+        submitted = st.form_submit_button("حفظ المشروع")
         if submitted:
             insert_record(
                 "INSERT INTO projects (project_name, progress, budget, status, created_at) VALUES (?, ?, ?, ?, ?)",
-                (project_name, progress, budget, status, str(date.today()))
+                (project_name, progress, budget, status, str(date.today())),
             )
             st.success("تم حفظ المشروع.")
 
@@ -562,23 +672,26 @@ elif menu == "المشاريع":
         st.write(f"**{row['project_name']}**")
         st.progress(int(row["progress"]))
 
-# =========================
+
+# =========================================================
 # PROCUREMENTS
-# =========================
+# =========================================================
 elif menu == "الصفقات العمومية":
     st.markdown('<div class="section-title">تدبير الصفقات العمومية</div>', unsafe_allow_html=True)
 
-    tabs = st.tabs([
-        "البيانات الأساسية",
-        "CPS",
-        "Lancement",
-        "Ouverture des plis",
-        "Évaluation",
-        "Attribution",
-        "OS",
-        "PVs",
-        "سجل الصفقات",
-    ])
+    tabs = st.tabs(
+        [
+            "البيانات الأساسية",
+            "CPS",
+            "Lancement",
+            "Ouverture des plis",
+            "Évaluation",
+            "Attribution",
+            "OS",
+            "PVs",
+            "سجل الصفقات",
+        ]
+    )
 
     with tabs[0]:
         with st.form("procurement_form"):
@@ -587,21 +700,37 @@ elif menu == "الصفقات العمومية":
                 reference = st.text_input("مرجع الصفقة")
                 subject = st.text_input("موضوع الصفقة")
                 owner = st.text_input("صاحب المشروع", value="الجماعة الترابية")
-                procedure_type = st.selectbox("طريقة الإبرام", ["طلب عروض مفتوح", "طلب عروض محدود", "سند طلب", "مباراة معمارية"])
+                procedure_type = st.selectbox(
+                    "طريقة الإبرام",
+                    ["طلب عروض مفتوح", "طلب عروض محدود", "سند طلب", "مباراة معمارية"],
+                )
                 estimated_cost = st.number_input("الكلفة التقديرية", min_value=0.0, step=1000.0)
             with c2:
                 fiscal_year = st.number_input("السنة المالية", min_value=2024, max_value=2100, value=2026)
                 department = st.text_input("المصلحة المعنية")
                 market_type = st.selectbox("نوع الصفقة", ["أشغال", "توريدات", "خدمات"])
                 status = st.selectbox("المرحلة الحالية", ["إعداد", "إطلاق", "فتح الأظرفة", "التقييم", "الإسناد", "التنفيذ"])
-            submitted = st.form_submit_button("حفظ الصفقة")
 
+            submitted = st.form_submit_button("حفظ الصفقة")
             if submitted:
                 insert_record(
-                    """INSERT INTO procurements
+                    """
+                    INSERT INTO procurements
                     (reference, subject, owner, procedure_type, estimated_cost, fiscal_year, department, market_type, status, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (reference, subject, owner, procedure_type, estimated_cost, fiscal_year, department, market_type, status, str(date.today()))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        reference,
+                        subject,
+                        owner,
+                        procedure_type,
+                        estimated_cost,
+                        fiscal_year,
+                        department,
+                        market_type,
+                        status,
+                        str(date.today()),
+                    ),
                 )
                 st.success("تم حفظ بيانات الصفقة.")
 
@@ -616,14 +745,27 @@ elif menu == "الصفقات العمومية":
             penalties = st.text_area("الغرامات")
             reception_terms = st.text_area("شروط الاستلام")
             notes = st.text_area("ملاحظات CPS")
-            submitted = st.form_submit_button("حفظ CPS")
 
+            submitted = st.form_submit_button("حفظ CPS")
             if submitted:
                 insert_record(
-                    """INSERT INTO cps
+                    """
+                    INSERT INTO cps
                     (procurement_ref, cps_subject, execution_delay, temporary_guarantee, final_guarantee, payment_terms, penalties, reception_terms, notes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (procurement_ref, cps_subject, execution_delay, temporary_guarantee, final_guarantee, payment_terms, penalties, reception_terms, notes, str(date.today()))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        procurement_ref,
+                        cps_subject,
+                        execution_delay,
+                        temporary_guarantee,
+                        final_guarantee,
+                        payment_terms,
+                        penalties,
+                        reception_terms,
+                        notes,
+                        str(date.today()),
+                    ),
                 )
                 st.success("تم حفظ CPS.")
 
@@ -640,14 +782,27 @@ elif menu == "الصفقات العمومية":
             visit_required = st.selectbox("زيارة ميدانية", ["نعم", "لا"])
             place = st.text_input("مكان الجلسة", value="مقر الجماعة")
             notes = st.text_area("ملاحظات")
-            submitted = st.form_submit_button("حفظ lancement")
 
+            submitted = st.form_submit_button("حفظ lancement")
             if submitted:
                 insert_record(
-                    """INSERT INTO procurement_launches
+                    """
+                    INSERT INTO procurement_launches
                     (procurement_ref, launch_date, publication_date, opening_date, publication_number, publication_media, visit_required, place, notes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (procurement_ref, str(launch_date), str(publication_date), str(opening_date), publication_number, ", ".join(publication_media), visit_required, place, notes, str(date.today()))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        procurement_ref,
+                        str(launch_date),
+                        str(publication_date),
+                        str(opening_date),
+                        publication_number,
+                        ", ".join(publication_media),
+                        visit_required,
+                        place,
+                        notes,
+                        str(date.today()),
+                    ),
                 )
                 st.success("تم حفظ معطيات الإطلاق.")
 
@@ -661,14 +816,24 @@ elif menu == "الصفقات العمومية":
             chair_name = st.text_input("رئيس اللجنة")
             members = st.text_area("أعضاء اللجنة")
             notes = st.text_area("ملاحظات الجلسة")
-            submitted = st.form_submit_button("حفظ جلسة الفتح")
 
+            submitted = st.form_submit_button("حفظ جلسة الفتح")
             if submitted:
                 insert_record(
-                    """INSERT INTO procurement_openings
+                    """
+                    INSERT INTO procurement_openings
                     (procurement_ref, session_date, session_time, chair_name, members, notes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (procurement_ref, str(session_date), str(session_time), chair_name, members, notes, str(date.today()))
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        procurement_ref,
+                        str(session_date),
+                        str(session_time),
+                        chair_name,
+                        members,
+                        notes,
+                        str(date.today()),
+                    ),
                 )
                 st.success("تم حفظ جلسة فتح الأظرفة.")
 
@@ -684,14 +849,26 @@ elif menu == "الصفقات العمومية":
             ranking = st.number_input("الترتيب", min_value=1, step=1)
             result = st.selectbox("النتيجة", ["مقبول", "مقصى"])
             notes = st.text_area("ملاحظات")
-            submitted = st.form_submit_button("حفظ التقييم")
 
+            submitted = st.form_submit_button("حفظ التقييم")
             if submitted:
                 insert_record(
-                    """INSERT INTO procurement_evaluations
+                    """
+                    INSERT INTO procurement_evaluations
                     (procurement_ref, company_name, administrative_result, technical_score, financial_offer, ranking, result, notes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (procurement_ref, company_name, administrative_result, technical_score, financial_offer, ranking, result, notes, str(date.today()))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        procurement_ref,
+                        company_name,
+                        administrative_result,
+                        technical_score,
+                        financial_offer,
+                        ranking,
+                        result,
+                        notes,
+                        str(date.today()),
+                    ),
                 )
                 st.success("تم حفظ التقييم.")
 
@@ -705,14 +882,24 @@ elif menu == "الصفقات العمومية":
             final_date = st.date_input("تاريخ الإسناد النهائي")
             attributed_amount = st.number_input("مبلغ الإسناد", min_value=0.0, step=1000.0)
             notes = st.text_area("ملاحظات")
-            submitted = st.form_submit_button("حفظ الإسناد")
 
+            submitted = st.form_submit_button("حفظ الإسناد")
             if submitted:
                 insert_record(
-                    """INSERT INTO procurement_attributions
+                    """
+                    INSERT INTO procurement_attributions
                     (procurement_ref, awarded_company, provisional_date, final_date, attributed_amount, notes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (procurement_ref, awarded_company, str(provisional_date), str(final_date), attributed_amount, notes, str(date.today()))
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        procurement_ref,
+                        awarded_company,
+                        str(provisional_date),
+                        str(final_date),
+                        attributed_amount,
+                        notes,
+                        str(date.today()),
+                    ),
                 )
                 st.success("تم حفظ الإسناد.")
 
@@ -726,14 +913,24 @@ elif menu == "الصفقات العمومية":
             os_date = st.date_input("تاريخ OS")
             execution_delay = st.text_input("أجل التنفيذ")
             notes = st.text_area("ملاحظات")
-            submitted = st.form_submit_button("حفظ OS")
 
+            submitted = st.form_submit_button("حفظ OS")
             if submitted:
                 insert_record(
-                    """INSERT INTO os_orders
+                    """
+                    INSERT INTO os_orders
                     (procurement_ref, os_type, company_name, os_date, execution_delay, notes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (procurement_ref, os_type, company_name, str(os_date), execution_delay, notes, str(date.today()))
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        procurement_ref,
+                        os_type,
+                        company_name,
+                        str(os_date),
+                        execution_delay,
+                        notes,
+                        str(date.today()),
+                    ),
                 )
                 st.success("تم حفظ OS.")
 
@@ -761,7 +958,7 @@ elif menu == "الصفقات العمومية":
             if st.button("حفظ PV"):
                 insert_record(
                     "INSERT INTO pvs (procurement_ref, pv_type, notes, content, created_at) VALUES (?, ?, ?, ?, ?)",
-                    (procurement_ref, pv_type, pv_notes, pv_content, str(date.today()))
+                    (procurement_ref, pv_type, pv_notes, pv_content, str(date.today())),
                 )
                 st.success("تم حفظ المحضر.")
         with c2:
@@ -769,7 +966,7 @@ elif menu == "الصفقات العمومية":
                 "تحميل المحضر",
                 data=pv_content if pv_content else "لا يوجد محتوى",
                 file_name=f"{pv_type.replace(' ', '_')}.txt",
-                mime="text/plain"
+                mime="text/plain",
             )
 
         st.dataframe(fetch_all("SELECT * FROM pvs ORDER BY id DESC"), use_container_width=True, hide_index=True)
@@ -777,22 +974,28 @@ elif menu == "الصفقات العمومية":
     with tabs[8]:
         st.dataframe(fetch_all("SELECT * FROM procurements ORDER BY id DESC"), use_container_width=True, hide_index=True)
 
-# =========================
+
+# =========================================================
 # BC
-# =========================
+# =========================================================
 elif menu == "سندات الطلب BC":
     st.markdown('<div class="section-title">تدبير سندات الطلب BC</div>', unsafe_allow_html=True)
 
-    bc_tabs = st.tabs([
-        "المعطيات الأساسية",
-        "الاستشارة",
-        "العروض",
-        "محضر افتتاح BC",
-        "الإسناد",
-        "التنفيذ",
-        "الاستلام والأداء",
-        "سجل BC",
-    ])
+    bc_tabs = st.tabs(
+        [
+            "المعطيات الأساسية",
+            "الاستشارة",
+            "العروض",
+            "Comparatif",
+            "محضر افتتاح BC",
+            "الإسناد",
+            "التنفيذ",
+            "الاستلام والأداء",
+            "رسالة الاستشارة",
+            "إشعار الإسناد",
+            "سجل BC",
+        ]
+    )
 
     with bc_tabs[0]:
         with st.form("bc_basic_form"):
@@ -805,14 +1008,27 @@ elif menu == "سندات الطلب BC":
             estimated_amount = st.number_input("الكلفة التقديرية", min_value=0.0, step=100.0)
             manager_name = st.text_input("المسؤول عن الملف")
             notes = st.text_area("ملاحظات")
-            submitted = st.form_submit_button("حفظ BC")
 
+            submitted = st.form_submit_button("حفظ BC")
             if submitted:
                 insert_record(
-                    """INSERT INTO bc_records
+                    """
+                    INSERT INTO bc_records
                     (bc_ref, fiscal_year, subject, department, expense_type, budget_line, estimated_amount, manager_name, notes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (bc_ref, fiscal_year, subject, department, expense_type, budget_line, estimated_amount, manager_name, notes, str(date.today()))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        bc_ref,
+                        fiscal_year,
+                        subject,
+                        department,
+                        expense_type,
+                        budget_line,
+                        estimated_amount,
+                        manager_name,
+                        notes,
+                        str(date.today()),
+                    ),
                 )
                 st.success("تم حفظ سند الطلب.")
 
@@ -824,14 +1040,24 @@ elif menu == "سندات الطلب BC":
             consultation_mode = st.selectbox("طريقة الاستشارة", ["يدوي", "بريد إلكتروني", "مراسلة", "هاتف مع تأكيد"])
             suppliers = st.text_area("الموردون أو المقاولات المستشارة")
             notes = st.text_area("ملاحظات")
-            submitted = st.form_submit_button("حفظ الاستشارة")
 
+            submitted = st.form_submit_button("حفظ الاستشارة")
             if submitted:
                 insert_record(
-                    """INSERT INTO bc_consultations
+                    """
+                    INSERT INTO bc_consultations
                     (bc_ref, consultation_date, deadline_date, consultation_mode, suppliers, notes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (bc_ref, str(consultation_date), str(deadline_date), consultation_mode, suppliers, notes, str(date.today()))
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        bc_ref,
+                        str(consultation_date),
+                        str(deadline_date),
+                        consultation_mode,
+                        suppliers,
+                        notes,
+                        str(date.today()),
+                    ),
                 )
                 st.success("تم حفظ الاستشارة.")
 
@@ -846,117 +1072,291 @@ elif menu == "سندات الطلب BC":
             offer_amount = st.number_input("مبلغ العرض", min_value=0.0, step=100.0)
             offer_status = st.selectbox("وضعية العرض", ["مقبول", "مرفوض", "قيد الدراسة"])
             notes = st.text_area("ملاحظات")
-            submitted = st.form_submit_button("حفظ العرض")
 
+            submitted = st.form_submit_button("حفظ العرض")
             if submitted:
                 insert_record(
-                    """INSERT INTO bc_offers
+                    """
+                    INSERT INTO bc_offers
                     (bc_ref, supplier_name, offer_ref, offer_date, offer_amount, offer_status, notes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (bc_ref, supplier_name, offer_ref, str(offer_date), offer_amount, offer_status, notes, str(date.today()))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        bc_ref,
+                        supplier_name,
+                        offer_ref,
+                        str(offer_date),
+                        offer_amount,
+                        offer_status,
+                        notes,
+                        str(date.today()),
+                    ),
                 )
                 st.success("تم حفظ العرض.")
 
         st.dataframe(fetch_all("SELECT * FROM bc_offers ORDER BY id DESC"), use_container_width=True, hide_index=True)
 
     with bc_tabs[3]:
-        bc_ref_pv = st.text_input("رقم سند الطلب", key="bc_ref_pv")
-        bc_subject_pv = st.text_input("موضوع سند الطلب", key="bc_subject_pv")
-        session_date_pv = st.date_input("تاريخ الجلسة", key="session_date_pv")
-        session_time_pv = st.time_input("ساعة الجلسة", key="session_time_pv")
-        session_place_pv = st.text_input("مكان الجلسة", value="مقر الجماعة", key="session_place_pv")
-        chair_pv = st.text_input("رئيس الجلسة", key="chair_pv")
-        members_pv = st.text_area("أعضاء اللجنة", key="members_pv", placeholder="الاسم 1\nالاسم 2\nالاسم 3")
+        st.subheader("📊 جدول مقارنة الأثمان")
 
-        st.markdown("#### العروض المتوصل بها")
-        supplier1 = st.text_input("المورد 1", key="supplier1")
-        amount1 = st.number_input("مبلغ العرض 1", min_value=0.0, step=100.0, key="amount1")
-        note1 = st.text_input("ملاحظات 1", key="note1")
+        bc_refs = fetch_bc_refs()
+        if bc_refs:
+            selected_bc = st.selectbox("اختر BC", bc_refs, key="comp_bc")
+            offers = fetch_bc_offers_sorted(selected_bc)
 
-        supplier2 = st.text_input("المورد 2", key="supplier2")
-        amount2 = st.number_input("مبلغ العرض 2", min_value=0.0, step=100.0, key="amount2")
-        note2 = st.text_input("ملاحظات 2", key="note2")
-
-        supplier3 = st.text_input("المورد 3", key="supplier3")
-        amount3 = st.number_input("مبلغ العرض 3", min_value=0.0, step=100.0, key="amount3")
-        note3 = st.text_input("ملاحظات 3", key="note3")
-
-        offers = []
-        if supplier1:
-            offers.append((supplier1, amount1, note1))
-        if supplier2:
-            offers.append((supplier2, amount2, note2))
-        if supplier3:
-            offers.append((supplier3, amount3, note3))
-
-        if offers:
-            best_offer = min(offers, key=lambda x: x[1])
-            auto_conclusion = f"بعد دراسة العروض، تبين أن أقل عرض هو عرض {best_offer[0]} بمبلغ {best_offer[1]} درهم."
-        else:
-            auto_conclusion = "لم يتم تسجيل أي عرض."
-
-        st.info(auto_conclusion)
-
-        conclusion_pv = st.text_area("الخلاصة النهائية", value=auto_conclusion, key="conclusion_pv")
-
-        offers_table = []
-        if supplier1:
-            offers_table.append(f"- {supplier1}: مبلغ العرض {amount1} درهم. ملاحظات: {note1}")
-        if supplier2:
-            offers_table.append(f"- {supplier2}: مبلغ العرض {amount2} درهم. ملاحظات: {note2}")
-        if supplier3:
-            offers_table.append(f"- {supplier3}: مبلغ العرض {amount3} درهم. ملاحظات: {note3}")
-
-        pv_text = f"""المملكة المغربية
-الجماعة الترابية
-
-محضر فتح ودراسة العروض
-المتعلقة بسند الطلب رقم: {bc_ref_pv}
-
-بتاريخ {session_date_pv} على الساعة {session_time_pv}، اجتمعت اللجنة/المصلحة المختصة بمقر {session_place_pv}
-لدراسة العروض المتعلقة بسند الطلب رقم {bc_ref_pv} الخاص بـ: {bc_subject_pv}.
-
-ترأس الجلسة السيد/السيدة: {chair_pv}
-وبحضور السادة:
-{members_pv}
-
-وبعد حصر العروض المتوصل بها، تم تسجيل ما يلي:
-{chr(10).join(offers_table) if offers_table else "لا توجد عروض مسجلة."}
-
-وبعد دراسة العروض والمقارنة بينها، خلصت اللجنة إلى ما يلي:
-{conclusion_pv}
-
-وحرر هذا المحضر في نفس اليوم من أجل ما يلزم.
-"""
-
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            if st.button("معاينة محضر الافتتاح BC"):
-                st.text_area("نص المحضر", value=pv_text, height=380)
-        with c2:
-            if st.button("حفظ محضر الافتتاح BC"):
-                insert_record(
-                    """INSERT INTO bc_opening_pvs
-                    (bc_ref, bc_subject, session_date, session_time, session_place, chair_name, members, offers_text, conclusion_text, pv_content, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        bc_ref_pv, bc_subject_pv, str(session_date_pv), str(session_time_pv),
-                        session_place_pv, chair_pv, members_pv, "\n".join(offers_table),
-                        conclusion_pv, pv_text, str(date.today())
-                    )
+            if offers:
+                df = pd.DataFrame(
+                    [
+                        {
+                            "المورد": r["supplier_name"],
+                            "المبلغ": r["offer_amount"],
+                            "الحالة": r["offer_status"],
+                            "ملاحظات": r["notes"],
+                        }
+                        for r in offers
+                    ]
                 )
-                st.success("تم حفظ محضر الافتتاح.")
-        with c3:
-            st.download_button(
-                label="تحميل محضر الافتتاح BC",
-                data=pv_text,
-                file_name=f"PV_Ouverture_BC_{bc_ref_pv if bc_ref_pv else 'sans_ref'}.txt",
-                mime="text/plain"
-            )
+                st.dataframe(df, use_container_width=True, hide_index=True)
+
+                best = min(offers, key=lambda x: x["offer_amount"])
+                st.success(f"أقل عرض: {best['supplier_name']} - {best['offer_amount']} درهم")
+            else:
+                st.warning("لا توجد عروض لهذا BC.")
+        else:
+            st.warning("لا توجد سندات طلب محفوظة.")
+
+    with bc_tabs[4]:
+        st.subheader("🧾 محاضر فتح ودراسة العروض - BC")
+
+        bc_refs = fetch_bc_refs()
+        if not bc_refs:
+            st.warning("لا توجد أي سندات طلب محفوظة بعد.")
+        else:
+            col_a, col_b = st.columns(2)
+            with col_a:
+                selected_bc = st.selectbox("اختر رقم BC", bc_refs, key="pv_bc_ref")
+            with col_b:
+                pv_num = st.selectbox("رقم المحضر", [1, 2, 3, 4, 5, 6], key="pv_number")
+
+            bc_info = fetch_bc_record(selected_bc)
+            bc_offers = fetch_bc_offers_sorted(selected_bc)
+
+            if bc_info:
+                st.info(f"موضوع BC: {bc_info.get('subject', '')}")
+
+            st.subheader("👥 اللجنة")
+            c1, c2, c3 = st.columns(3)
+            p_name = c1.text_input("Président", "MOHAMED ZILALI")
+            d_name = c2.text_input("Directeur du service", "M BAREK BAK")
+            t_name = c3.text_input("Technicien", "ABDELLATIF ATTAKY")
+
+            st.subheader("🗓️ الجلسة")
+            c4, c5, c6 = st.columns(3)
+            reunion_date = c4.date_input("تاريخ الجلسة", date.today(), key="pv_session_date")
+            reunion_hour = c5.text_input("الساعة", "10h00mn")
+            session_place = c6.text_input("المكان", "Salle de réunion de la commune")
+
+            st.subheader("📊 العروض المسجلة")
+            if bc_offers:
+                offers_df = pd.DataFrame(
+                    [
+                        {
+                            "Rang": i + 1,
+                            "Nom": r["supplier_name"],
+                            "Montant": r["offer_amount"],
+                            "Réf offre": r["offer_ref"],
+                            "Date offre": r["offer_date"],
+                            "Statut": r["offer_status"],
+                            "Notes": r["notes"],
+                        }
+                        for i, r in enumerate(bc_offers)
+                    ]
+                )
+                st.dataframe(offers_df, use_container_width=True, hide_index=True)
+            else:
+                st.warning("لا توجد عروض محفوظة لهذا BC في جدول العروض.")
+
+            is_infructueux = False
+            is_final_attr = False
+
+            if pv_num == 6:
+                res_6 = st.radio(
+                    "نتيجة المحضر 6",
+                    ["Attribution (إسناد)", "B.C Infructueux (غير مثمر)"],
+                )
+                is_infructueux = res_6 == "B.C Infructueux (غير مثمر)"
+                is_final_attr = res_6 == "Attribution (إسناد)"
+            else:
+                is_final_attr = st.checkbox("هل هذا محضر إسناد نهائي؟")
+
+            if st.button("🚀 إنشاء المحضر Word"):
+                if not bc_info:
+                    st.error("تعذر جلب معطيات BC.")
+                elif not bc_offers:
+                    st.error("لا توجد عروض مرتبطة بهذا BC.")
+                else:
+                    doc = Document()
+                    section = doc.sections[0]
+
+                    header = section.header
+                    htable = header.add_table(1, 2)
+                    htable.rows[0].cells[0].paragraphs[0].text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nCOMMUNE"
+                    htable.rows[0].cells[1].paragraphs[0].text = "المملكة المغربية\nوزارة الداخلية\nالجماعة"
+                    htable.rows[0].cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+                    doc.add_paragraph("")
+                    doc.add_heading(f"{pv_num}ème Procès-verbal", 1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    doc.add_paragraph("De la commission d’ouverture des plis\nProcédure Bon de commande").alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+                    obj_bc = bc_info.get("subject", "")
+                    doc.add_paragraph(f"Objet : {obj_bc}").bold = True
+                    doc.add_paragraph(
+                        f"Le {reunion_date.strftime('%d/%m/%Y')} à {reunion_hour}, la commission d’ouverture des plis composée comme suit :"
+                    )
+                    doc.add_paragraph(
+                        f"- M. {p_name} : Président de la commission\n"
+                        f"- M. {d_name} : Directeur du service\n"
+                        f"- M. {t_name} : Technicien de la commune"
+                    )
+
+                    doc.add_paragraph(
+                        f"S’est réunie dans {session_place} concernant l’avis d’achat du bon de commande n° {selected_bc}, "
+                        f"en application des dispositions réglementaires relatives aux marchés publics."
+                    )
+
+                    if pv_num == 1:
+                        doc.add_paragraph("Après vérification, les soumissionnaires ayant déposé leurs offres sont :")
+                        tab = doc.add_table(rows=1, cols=3)
+                        tab.style = "Table Grid"
+                        hdr = tab.rows[0].cells
+                        hdr[0].text = "Rang"
+                        hdr[1].text = "Concurrent"
+                        hdr[2].text = "Montant TTC"
+
+                        for i, r in enumerate(bc_offers):
+                            row = tab.add_row().cells
+                            row[0].text = str(i + 1)
+                            row[1].text = str(r["supplier_name"])
+                            row[2].text = f"{r['offer_amount']} MAD"
+
+                        curr_company = bc_offers[0]["supplier_name"]
+                        curr_amount = bc_offers[0]["offer_amount"]
+                        amt_w = format_to_words_fr(curr_amount)
+
+                        doc.add_paragraph(
+                            f"\nAprès examen des offres, le président de la commission invite la société : "
+                            f"{curr_company} qui est le moins disant pour un montant de {curr_amount} Dhs TTC "
+                            f"({amt_w}) à confirmer son offre par lettre de confirmation."
+                        )
+                    else:
+                        idx = pv_num - 1 if pv_num <= 5 else 4
+
+                        if idx >= len(bc_offers):
+                            doc.add_paragraph(
+                                "Le nombre d’offres disponibles est insuffisant pour générer ce procès-verbal."
+                            )
+                        else:
+                            curr_company = bc_offers[idx]["supplier_name"]
+                            curr_amount = bc_offers[idx]["offer_amount"]
+                            amt_w = format_to_words_fr(curr_amount)
+
+                            prev_company = ""
+                            if idx - 1 >= 0 and idx - 1 < len(bc_offers):
+                                prev_company = bc_offers[idx - 1]["supplier_name"]
+
+                            if is_infructueux:
+                                doc.add_paragraph(
+                                    f"Après vérification, la commission constate que la société {curr_company} "
+                                    f"n’a pas confirmé son offre par lettre de confirmation."
+                                )
+                                p_inf = doc.add_paragraph(
+                                    "\nPAR CONSÉQUENT, LA COMMISSION DÉCLARE QUE CE BON DE COMMANDE EST :"
+                                )
+                                p_inf.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                                res_inf = doc.add_paragraph("INFRUCTUEUX")
+                                res_inf.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                                res_inf.runs[0].bold = True
+                                res_inf.runs[0].font.size = Pt(16)
+
+                            elif is_final_attr:
+                                doc.add_paragraph(
+                                    f"Après vérification, la commission constate que la société {curr_company} "
+                                    f"a confirmé son offre par lettre de confirmation."
+                                )
+                                p_res = doc.add_paragraph(
+                                    f"Le président valide la confirmation et attribue le bon de commande "
+                                    f"à la société {curr_company} pour un montant de : {curr_amount} Dhs TTC ({amt_w})."
+                                )
+                                p_res.runs[0].bold = True
+
+                            else:
+                                doc.add_paragraph(
+                                    f"Après vérification, la commission constate que la société {prev_company} "
+                                    f"n’a pas confirmé son offre par lettre de confirmation."
+                                )
+                                doc.add_paragraph(
+                                    f"Après écartement de la société {prev_company}, le président de la commission "
+                                    f"invite la société : {curr_company} classée au rang {pv_num} pour un montant de "
+                                    f"{curr_amount} Dhs TTC ({amt_w}) à confirmer son offre par lettre de confirmation."
+                                )
+
+                    doc.add_paragraph(
+                        f"\nFait à la commune, le {reunion_date.strftime('%d/%m/%Y')}"
+                    ).alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+                    sig_tab = doc.add_table(rows=2, cols=3)
+                    sig_tab.rows[0].cells[0].text = "Le Président"
+                    sig_tab.rows[0].cells[1].text = "Le Directeur"
+                    sig_tab.rows[0].cells[2].text = "Le Technicien"
+
+                    sig_tab.rows[1].cells[0].text = p_name
+                    sig_tab.rows[1].cells[1].text = d_name
+                    sig_tab.rows[1].cells[2].text = t_name
+
+                    for r in sig_tab.rows:
+                        for c in r.cells:
+                            c.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+                    offers_text = "\n".join(
+                        [f"{i + 1} - {r['supplier_name']} - {r['offer_amount']} MAD" for i, r in enumerate(bc_offers)]
+                    )
+
+                    pv_content = f"PV {pv_num} - BC {selected_bc}"
+
+                    insert_record(
+                        """
+                        INSERT INTO bc_opening_pvs
+                        (bc_ref, bc_subject, session_date, session_time, session_place, chair_name, members, offers_text, conclusion_text, pv_content, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            selected_bc,
+                            obj_bc,
+                            str(reunion_date),
+                            reunion_hour,
+                            session_place,
+                            p_name,
+                            f"{d_name}\n{t_name}",
+                            offers_text,
+                            f"PV {pv_num}",
+                            pv_content,
+                            str(date.today()),
+                        ),
+                    )
+
+                    bio = BytesIO()
+                    doc.save(bio)
+
+                    st.download_button(
+                        label=f"📥 تحميل المحضر رقم {pv_num}",
+                        data=bio.getvalue(),
+                        file_name=f"PV_BC_{selected_bc}_{pv_num}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    )
 
         st.dataframe(fetch_all("SELECT * FROM bc_opening_pvs ORDER BY id DESC"), use_container_width=True, hide_index=True)
 
-    with bc_tabs[4]:
+    with bc_tabs[5]:
         with st.form("bc_award_form"):
             bc_ref = st.text_input("رقم BC", key="bc_award_ref")
             awarded_supplier = st.text_input("نائل سند الطلب")
@@ -965,20 +1365,31 @@ elif menu == "سندات الطلب BC":
             execution_deadline = st.text_input("أجل التنفيذ")
             bc_issue_date = st.date_input("تاريخ إصدار BC")
             notes = st.text_area("ملاحظات")
-            submitted = st.form_submit_button("حفظ الإسناد")
 
+            submitted = st.form_submit_button("حفظ الإسناد")
             if submitted:
                 insert_record(
-                    """INSERT INTO bc_awards
+                    """
+                    INSERT INTO bc_awards
                     (bc_ref, awarded_supplier, awarded_amount, award_date, execution_deadline, bc_issue_date, notes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (bc_ref, awarded_supplier, awarded_amount, str(award_date), execution_deadline, str(bc_issue_date), notes, str(date.today()))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        bc_ref,
+                        awarded_supplier,
+                        awarded_amount,
+                        str(award_date),
+                        execution_deadline,
+                        str(bc_issue_date),
+                        notes,
+                        str(date.today()),
+                    ),
                 )
                 st.success("تم حفظ الإسناد.")
 
         st.dataframe(fetch_all("SELECT * FROM bc_awards ORDER BY id DESC"), use_container_width=True, hide_index=True)
 
-    with bc_tabs[5]:
+    with bc_tabs[6]:
         with st.form("bc_execution_form"):
             bc_ref = st.text_input("رقم BC", key="bc_exec_ref")
             notification_date = st.date_input("تاريخ التبليغ")
@@ -987,20 +1398,31 @@ elif menu == "سندات الطلب BC":
             execution_status = st.selectbox("حالة التنفيذ", ["لم يبدأ", "جاري", "تم"])
             execution_progress = st.slider("نسبة الإنجاز", 0, 100, 0)
             notes = st.text_area("ملاحظات التتبع")
-            submitted = st.form_submit_button("حفظ التنفيذ")
 
+            submitted = st.form_submit_button("حفظ التنفيذ")
             if submitted:
                 insert_record(
-                    """INSERT INTO bc_executions
+                    """
+                    INSERT INTO bc_executions
                     (bc_ref, notification_date, start_date, expected_delivery, execution_status, execution_progress, notes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (bc_ref, str(notification_date), str(start_date), str(expected_delivery), execution_status, execution_progress, notes, str(date.today()))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        bc_ref,
+                        str(notification_date),
+                        str(start_date),
+                        str(expected_delivery),
+                        execution_status,
+                        execution_progress,
+                        notes,
+                        str(date.today()),
+                    ),
                 )
                 st.success("تم حفظ وضعية التنفيذ.")
 
         st.dataframe(fetch_all("SELECT * FROM bc_executions ORDER BY id DESC"), use_container_width=True, hide_index=True)
 
-    with bc_tabs[6]:
+    with bc_tabs[7]:
         with st.form("bc_reception_form"):
             bc_ref = st.text_input("رقم BC", key="bc_reception_ref")
             reception_date = st.date_input("تاريخ الاستلام")
@@ -1011,21 +1433,96 @@ elif menu == "سندات الطلب BC":
             invoice_amount = st.number_input("مبلغ الفاتورة", min_value=0.0, step=100.0)
             payment_date = st.date_input("تاريخ الأداء")
             notes = st.text_area("ملاحظات")
-            submitted = st.form_submit_button("حفظ الاستلام والأداء")
 
+            submitted = st.form_submit_button("حفظ الاستلام والأداء")
             if submitted:
                 insert_record(
-                    """INSERT INTO bc_receptions
+                    """
+                    INSERT INTO bc_receptions
                     (bc_ref, reception_date, reception_type, conformity, invoice_number, invoice_date, invoice_amount, payment_date, notes, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (bc_ref, str(reception_date), reception_type, conformity, invoice_number, str(invoice_date), invoice_amount, str(payment_date), notes, str(date.today()))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        bc_ref,
+                        str(reception_date),
+                        reception_type,
+                        conformity,
+                        invoice_number,
+                        str(invoice_date),
+                        invoice_amount,
+                        str(payment_date),
+                        notes,
+                        str(date.today()),
+                    ),
                 )
                 st.success("تم حفظ بيانات الاستلام والأداء.")
 
         st.dataframe(fetch_all("SELECT * FROM bc_receptions ORDER BY id DESC"), use_container_width=True, hide_index=True)
 
-    with bc_tabs[7]:
+    with bc_tabs[8]:
+        st.subheader("📨 رسالة طلب الأثمنة")
+        bc_ref = st.text_input("رقم BC", key="consult_doc")
+        subject = st.text_input("موضوع الطلب")
+        suppliers = st.text_area("الموردون")
+
+        if st.button("توليد رسالة الاستشارة"):
+            text = f"""
+المملكة المغربية
+الجماعة الترابية
+
+الموضوع: طلب أثمنة
+
+يشرفنا أن نطلب منكم تقديم عرض أثمنة بخصوص:
+{subject}
+
+يرجى إرسال العرض في أقرب الآجال.
+
+الموردون:
+{suppliers}
+
+رقم BC:
+{bc_ref}
+"""
+            st.text_area("المعاينة", text, height=250)
+            st.download_button(
+                "تحميل رسالة الاستشارة",
+                data=text,
+                file_name=f"Lettre_consultation_{bc_ref if bc_ref else 'BC'}.txt",
+                mime="text/plain",
+            )
+
+    with bc_tabs[9]:
+        st.subheader("📄 إشعار الإسناد")
+        bc_ref = st.text_input("BC", key="attr_doc")
+        company = st.text_input("الشركة")
+        amount = st.number_input("المبلغ", min_value=0.0, step=100.0, key="attr_amount")
+
+        if st.button("توليد إشعار الإسناد"):
+            text = f"""
+المملكة المغربية
+الجماعة الترابية
+
+إشعار بالإسناد
+
+نخبركم أنه تم إسناد سند الطلب رقم {bc_ref}
+لفائدتكم بمبلغ {amount} درهم.
+
+يرجى الاتصال بالمصلحة المختصة.
+"""
+            st.text_area("المعاينة", text, height=220)
+            st.download_button(
+                "تحميل إشعار الإسناد",
+                data=text,
+                file_name=f"Notification_attribution_{bc_ref if bc_ref else 'BC'}.txt",
+                mime="text/plain",
+            )
+
+    with bc_tabs[10]:
         st.dataframe(fetch_all("SELECT * FROM bc_records ORDER BY id DESC"), use_container_width=True, hide_index=True)
 
+
+# =========================================================
+# FOOTER
+# =========================================================
 st.markdown("---")
-st.caption("نظام تدبير مصالح الجماعة — نسخة عربية محسنة بملف واحد")
+st.caption("نظام تدبير مصالح الجماعة — نسخة احترافية جاهزة للنشر")
