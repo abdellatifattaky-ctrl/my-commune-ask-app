@@ -1,86 +1,130 @@
-# -*- coding: utf-8 -*-
 import streamlit as st
-from docx import Document
-import io
-from dataclasses import dataclass
-from datetime import date
+import sqlite3
 
-# بيانات النموذج
-@dataclass
-class PVInput:
-    num_ao: str
-    objet: str
-    est: float
-    president: str
-    date_ar: date
-    date_fr: date
-    date_portal: date
+# ================= DATABASE =================
+def get_conn():
+    return sqlite3.connect("commune.db", check_same_thread=False)
 
-def create_automatic_pv(data: PVInput) -> io.BytesIO:
-    doc = Document()
-    doc.add_paragraph("المملكة المغربية\nوزارة الداخلية\nعمالة تارودانت\nجماعة أسكاون").alignment = 0
+def init_db():
+    conn = get_conn()
+    c = conn.cursor()
 
-    doc.add_heading(f"محضر فتح الأظرفة رقم {data.num_ao}", 0)
+    c.execute("CREATE TABLE IF NOT EXISTS correspondences (id INTEGER PRIMARY KEY, ref TEXT, subject TEXT, type TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS licenses (id INTEGER PRIMARY KEY, name TEXT, type TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS employees (id INTEGER PRIMARY KEY, name TEXT, dept TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY, name TEXT, progress INTEGER)")
+    c.execute("CREATE TABLE IF NOT EXISTS procurements (id INTEGER PRIMARY KEY, ref TEXT, subject TEXT)")
 
-    p = doc.add_paragraph()
-    p.add_run("بناءً على الإعلانات المنشورة في:\n").bold = True
-    p.add_run(f"- الجريدة العربية بتاريخ: {data.date_ar.strftime('%d/%m/%Y')}\n")
-    p.add_run(f"- الجريدة الفرنسية بتاريخ: {data.date_fr.strftime('%d/%m/%Y')}\n")
-    p.add_run(f"- بوابة الصفقات بتاريخ: {data.date_portal.strftime('%d/%m/%Y')}\n\n")
-    p.add_run("اجتمعت اللجنة برئاسة السيد: ").add_run(f"{data.president}").bold = True
-    p.add_run(f"\nبخصوص موضوع: {data.objet}")
-    p.add_run(f"\nالتقدير المالي للمشروع: {data.est:,.2f} درهم")
+    conn.commit()
+    conn.close()
 
-    doc.add_page_break()
-    buffer = io.BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    return buffer
+def fetch(table):
+    conn = get_conn()
+    data = conn.execute(f"SELECT * FROM {table}").fetchall()
+    conn.close()
+    return data
 
-# UI الأساسية
-st.set_page_config(page_title="منصة صفقات أسكاون", layout="wide")
-st.title("🇲🇦 نظام توليد وثائق الصفقات - جماعة أسكاون")
+def insert(table, values):
+    conn = get_conn()
+    placeholders = ",".join(["?"] * len(values))
+    conn.execute(f"INSERT INTO {table} VALUES(NULL,{placeholders})", values)
+    conn.commit()
+    conn.close()
 
-with st.container():
-    st.subheader("🗓️ تواريخ النشر والإعلان (Publicité)")
-    c_ar, c_fr, c_web = st.columns(3)
-    try:
-        d_ar = c_ar.date_input("الجريدة العربية (العلم)", value=date.today())
-        d_fr = c_fr.date_input("الجريدة الفرنسية (L'Opinion)", value=date.today())
-        d_web = c_web.date_input("بوابة الصفقات العمومية", value=date.today())
-    except Exception:
-        d_ar = d_fr = d_web = date.today()
+# ================= APP =================
+st.set_page_config(page_title="نظام الجماعة", layout="wide")
+init_db()
 
-    st.subheader("📝 معلومات الصفقة العامة")
-    col1, col2 = st.columns(2)
-    n_ao = col1.text_input("رقم طلب العروض", "01/ask/2025")
-    objet = col1.text_area("موضوع الصفقة الكامل", "موضوع الصفقة القياسي")
-    est = col2.number_input("التقدير المالي (درهم)", value=1060020.0)
-    pres = col2.text_input("رئيس اللجنة", "ZILALI MOHAMED")
+st.title("🏛️ نظام تدبير مصالح الجماعة")
 
-# توليد المحضر
-def safe_to_generate():
-    return all([n_ao.strip(), objet.strip(), pres.strip()])
+menu = st.sidebar.selectbox("القائمة", [
+    "لوحة القيادة",
+    "المراسلات",
+    "الرخص",
+    "الموظفون",
+    "المشاريع",
+    "الصفقات"
+])
 
-st.divider()
-if st.button("📄 توليد وتحميل المحضر الأول (1er PV)") and safe_to_generate():
-    data_to_fill = PVInput(
-        num_ao=n_ao,
-        objet=objet,
-        est=float(est),
-        president=pres,
-        date_ar=d_ar,
-        date_fr=d_fr,
-        date_portal=d_web
-    )
-    file_buffer = create_automatic_pv(data_to_fill)
-    st.download_button(
-        label="📥 اضغط هنا لتحميل المحضر بصيغة Word",
-        data=file_buffer,
-        file_name=f"PV1_{n_ao.replace('/', '_')}.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
-else:
-    st.info("يرجى تعبئة الحقول الأساسية ثم الضغط على توليد.")
+# ================= DASHBOARD =================
+if menu == "لوحة القيادة":
+    c1,c2,c3,c4 = st.columns(4)
+    c1.metric("المراسلات", len(fetch("correspondences")))
+    c2.metric("الرخص", len(fetch("licenses")))
+    c3.metric("الموظفون", len(fetch("employees")))
+    c4.metric("الصفقات", len(fetch("procurements")))
 
-st.sidebar.success("✅ النظام يعمل الآن بدون الحاجة لرفع قوالب يدويًا")
+# ================= CORRESPONDENCE =================
+elif menu == "المراسلات":
+    st.subheader("📄 المراسلات")
+
+    with st.form("f1"):
+        ref = st.text_input("رقم")
+        sub = st.text_input("موضوع")
+        typ = st.selectbox("نوع", ["واردة","صادرة"])
+        if st.form_submit_button("حفظ"):
+            insert("correspondences",(ref,sub,typ))
+            st.success("تم الحفظ")
+
+    st.dataframe(fetch("correspondences"))
+
+# ================= LICENSE =================
+elif menu == "الرخص":
+    st.subheader("🧾 الرخص")
+
+    with st.form("f2"):
+        name = st.text_input("اسم")
+        typ = st.selectbox("نوع", ["بناء","سكن"])
+        if st.form_submit_button("حفظ"):
+            insert("licenses",(name,typ))
+            st.success("تم")
+
+    st.dataframe(fetch("licenses"))
+
+# ================= EMPLOYEE =================
+elif menu == "الموظفون":
+    st.subheader("👥 الموظفون")
+
+    with st.form("f3"):
+        name = st.text_input("اسم")
+        dept = st.text_input("مصلحة")
+        if st.form_submit_button("حفظ"):
+            insert("employees",(name,dept))
+            st.success("تم")
+
+    st.dataframe(fetch("employees"))
+
+# ================= PROJECT =================
+elif menu == "المشاريع":
+    st.subheader("🏗 المشاريع")
+
+    with st.form("f4"):
+        name = st.text_input("اسم المشروع")
+        progress = st.slider("نسبة التقدم",0,100)
+        if st.form_submit_button("حفظ"):
+            insert("projects",(name,progress))
+            st.success("تم")
+
+    data = fetch("projects")
+    st.dataframe(data)
+
+    for d in data:
+        st.write(d[1])
+        st.progress(d[2])
+
+# ================= PROCUREMENT =================
+elif menu == "الصفقات":
+    st.subheader("📑 الصفقات")
+
+    with st.form("f5"):
+        ref = st.text_input("مرجع الصفقة")
+        sub = st.text_input("موضوع")
+        if st.form_submit_button("حفظ"):
+            insert("procurements",(ref,sub))
+            st.success("تم")
+
+    st.dataframe(fetch("procurements"))
+
+# ================= FOOTER =================
+st.markdown("---")
+st.caption("نسخة واحدة - Streamlit + SQLite")
