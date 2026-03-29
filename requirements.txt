@@ -2,3 +2,4 @@ streamlit
 pandas
 python-docx
 num2words
+dcxtpl
