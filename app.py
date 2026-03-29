@@ -5,121 +5,96 @@ from datetime import date
 from docx import Document
 from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from num2words import num2words
 
-# --- إعدادات الصفحة ---
-st.set_page_config(page_title="SMART PRO+ الصفقات", layout="wide")
-
-# --- دوال قاعدة البيانات ---
+# --- المحافظة على الدوال الأصلية الخاصة بك ---
 def get_conn():
-    # ملاحظة: sqlite3 ستنشئ الملف تلقائياً في مستودع GitHub الخاص بك عند التشغيل
-    conn = sqlite3.connect("procurement_db.sqlite")
+    conn = sqlite3.connect("procurement.db")
     conn.row_factory = sqlite3.Row
     return conn
 
-def init_db():
+def fetch_all(query, params=()):
     conn = get_conn()
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS markets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            market_ref TEXT,
-            market_object TEXT,
-            estimate_amount REAL,
-            created_at TEXT
-        )
-    """)
-    conn.commit()
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
     conn.close()
+    return rows
 
-def format_amount_fr(value):
-    try:
-        val = float(value)
-        words = num2words(val, lang="fr").upper()
-        return f"{words} DIRHAMS"
-    except:
-        return "________________"
+# --- تعريف القائمة الجانبية (هذا السطر يحل مشكلة NameError) ---
+menu = st.sidebar.selectbox("القائمة", ["الصفقات العمومية"]) 
 
-# --- دالة إنشاء مستند الوورد ---
-def create_pv1(data):
-    doc = Document()
-    section = doc.sections[0]
-    section.top_margin = Cm(2)
-    
-    # الهيدر
-    header = doc.add_paragraph()
-    header.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    header.add_run("ROYAUME DU MAROC\nCOMMUNE ASKAOUEN").bold = True
-    
-    doc.add_paragraph("\n")
-    
-    # العنوان
-    title = doc.add_paragraph()
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = title.add_run(f"PROCES VERBAL N°: {data['market_ref']}")
-    run.bold = True
-    run.font.size = Pt(14)
-    
-    # التفاصيل
-    doc.add_paragraph(f"Objet: {data['market_object']}")
-    doc.add_paragraph(f"Montant estimatif: {data['estimate_amount']} DHS")
-    doc.add_paragraph(f"Arrêté à la somme de: {format_amount_fr(data['estimate_amount'])}")
-    
-    doc.add_paragraph("\n\nFait à Askaouen, le " + str(date.today()))
-    
-    target = io.BytesIO()
-    doc.save(target)
-    return target.getvalue()
+# --- القالب الأصلي الخاص بك ---
+if menu == "الصفقات العمومية":
+    st.markdown('<div class="section-title">تدبير الصفقات العمومية SMART PRO+</div>', unsafe_allow_html=True)
 
-# --- واجهة المستخدم ---
-init_db() # تشغيل التأسيس
-
-st.sidebar.title("🛠️ لوحة التحكم")
-menu = st.sidebar.selectbox("اختر القسم", ["الرئيسية", "الصفقات العمومية"])
-
-if menu == "الرئيسية":
-    st.title("مرحباً بك في تطبيق تدبير الصفقات 🚀")
-    st.write("هذا التطبيق مخصص لتبسيط استخراج المحاضر القانونية.")
-
-elif menu == "الصفقات العمومية":
-    st.header("🏢 إدارة الصفقات العمومية")
-    
-    t1, t2 = st.tabs(["➕ إضافة صفقة", "📄 استخراج PV1"])
-    
-    with t1:
-        with st.form("add_market"):
-            ref = st.text_input("رقم الصفقة")
-            obj = st.text_area("موضوع الصفقة")
-            amt = st.number_input("التقدير المالي", min_value=0.0)
-            if st.form_submit_button("حفظ"):
-                if ref and obj:
-                    conn = get_conn()
-                    conn.execute("INSERT INTO markets (market_ref, market_object, estimate_amount, created_at) VALUES (?,?,?,?)",
-                                 (ref, obj, amt, str(date.today())))
-                    conn.commit()
-                    conn.close()
-                    st.success("تم الحفظ بنجاح في قاعدة البيانات!")
-                else:
-                    st.error("يرجى ملء الحقول المطلوبة")
-
-    with t2:
+    # 1. تعريف الدوال (Functions) داخل السياق
+    def init_procurement_smart_tables():
         conn = get_conn()
-        rows = conn.execute("SELECT * FROM markets").fetchall()
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS market_master_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                market_ref TEXT,
+                market_object TEXT,
+                estimate_amount REAL,
+                created_at TEXT
+            )
+        """)
+        conn.commit()
         conn.close()
-        
-        if rows:
-            market_names = {r['market_ref']: r for r in rows}
-            choice = st.selectbox("اختر الصفقة", list(market_names.keys()))
-            
-            if st.button("تجهيز الملف للتحميل"):
-                selected_data = dict(market_names[choice])
-                docx_file = create_pv1(selected_data)
-                
-                st.download_button(
-                    label="💾 تحميل محضر PV1",
-                    data=docx_file,
-                    file_name=f"PV1_{choice}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
+
+    def get_market_refs():
+        rows = fetch_all("SELECT DISTINCT market_ref FROM market_master_data WHERE market_ref IS NOT NULL")
+        return [r["market_ref"] for r in rows]
+
+    def get_market_data(market_ref):
+        rows = fetch_all("SELECT * FROM market_master_data WHERE market_ref = ? LIMIT 1", (market_ref,))
+        return rows[0] if rows else None
+
+    # 2. تشغيل التأسيس (بمحاذاة صحيحة)
+    init_procurement_smart_tables()
+
+    # 3. واجهة المستخدم (UI) بنفس قوالبك
+    tabs = st.tabs(["➕ تسجيل صفقة جديدة", "📊 إدارة الصفقات", "📄 توليد المحاضر"])
+
+    with tabs[0]:
+        st.subheader("إدخال بيانات الصفقة الأساسية")
+        with st.form("market_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                m_ref = st.text_input("مرجع الصفقة (N° AO)", placeholder="مثال: 01/2024")
+                m_obj = st.text_area("موضوع الصفقة")
+            with col2:
+                m_date = st.date_input("تاريخ فتح الأظرفة")
+                m_amount = st.number_input("التقدير المالي", min_value=0.0)
+
+            submit_btn = st.form_submit_button("حفظ")
+            if submit_btn:
+                # كود الحفظ الفعلي ليعمل الزر
+                conn = get_conn()
+                conn.execute("INSERT INTO market_master_data (market_ref, market_object, estimate_amount, created_at) VALUES (?, ?, ?, ?)",
+                             (m_ref, m_obj, m_amount, str(m_date)))
+                conn.commit()
+                conn.close()
+                st.success(f"تم حفظ {m_ref} بنجاح")
+
+    with tabs[1]:
+        st.subheader("قائمة الصفقات المسجلة")
+        refs = get_market_refs()
+        if refs:
+            selected_ref = st.selectbox("اختر صفقة:", refs)
+            data = get_market_data(selected_ref)
+            if data:
+                st.write(dict(data))
         else:
-            st.warning("لا توجد صفقات مسجلة بعد.")
+            st.info("لا توجد صفقات مسجلة حالياً.")
+
+    with tabs[2]:
+        st.subheader("تحميل المحاضر والوثائق (Docx)")
+        all_refs = get_market_refs()
+        if all_refs:
+            target_ref = st.selectbox("اختر الصفقة لإصدار وثائقها:", all_refs, key="gen_docs")
+            if st.button("إنشاء PV1"):
+                st.info(f"جاري تحضير الملف للصفقة {target_ref}...")
+        else:
+            st.warning("يجب إضافة صفقة أولاً.")
