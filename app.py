@@ -5,27 +5,23 @@ from datetime import date
 from docx import Document
 from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from num2words import num2words
 
-# --- 1. تعريف الدوال الأساسية (توضع في بداية الملف) ---
+# --- إعدادات الصفحة ---
+st.set_page_config(page_title="SMART PRO+ الصفقات", layout="wide")
 
+# --- دوال قاعدة البيانات ---
 def get_conn():
-    conn = sqlite3.connect("procurement.db")
+    # ملاحظة: sqlite3 ستنشئ الملف تلقائياً في مستودع GitHub الخاص بك عند التشغيل
+    conn = sqlite3.connect("procurement_db.sqlite")
     conn.row_factory = sqlite3.Row
     return conn
 
-def fetch_all(query, params=()):
-    conn = get_conn()
-    cursor = conn.cursor()
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
-
-def init_procurement_smart_tables():
+def init_db():
     conn = get_conn()
     c = conn.cursor()
     c.execute("""
-        CREATE TABLE IF NOT EXISTS market_master_data (
+        CREATE TABLE IF NOT EXISTS markets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             market_ref TEXT,
             market_object TEXT,
@@ -36,53 +32,94 @@ def init_procurement_smart_tables():
     conn.commit()
     conn.close()
 
-def get_market_refs():
-    rows = fetch_all("SELECT DISTINCT market_ref FROM market_master_data WHERE market_ref IS NOT NULL")
-    return [r["market_ref"] for r in rows]
+def format_amount_fr(value):
+    try:
+        val = float(value)
+        words = num2words(val, lang="fr").upper()
+        return f"{words} DIRHAMS"
+    except:
+        return "________________"
 
-# --- 2. منطق البرنامج الرئيسي ---
+# --- دالة إنشاء مستند الوورد ---
+def create_pv1(data):
+    doc = Document()
+    section = doc.sections[0]
+    section.top_margin = Cm(2)
+    
+    # الهيدر
+    header = doc.add_paragraph()
+    header.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    header.add_run("ROYAUME DU MAROC\nCOMMUNE ASKAOUEN").bold = True
+    
+    doc.add_paragraph("\n")
+    
+    # العنوان
+    title = doc.add_paragraph()
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = title.add_run(f"PROCES VERBAL N°: {data['market_ref']}")
+    run.bold = True
+    run.font.size = Pt(14)
+    
+    # التفاصيل
+    doc.add_paragraph(f"Objet: {data['market_object']}")
+    doc.add_paragraph(f"Montant estimatif: {data['estimate_amount']} DHS")
+    doc.add_paragraph(f"Arrêté à la somme de: {format_amount_fr(data['estimate_amount'])}")
+    
+    doc.add_paragraph("\n\nFait à Askaouen, le " + str(date.today()))
+    
+    target = io.BytesIO()
+    doc.save(target)
+    return target.getvalue()
 
-# ملاحظة: تأكد من تعريف متغير menu قبل هذا السطر (مثلاً عبر sidebar)
-# سنستخدم 'if' بدلاً من 'elif' لتجنب خطأ SyntaxError إذا كان هذا أول شرط
-if menu == "الصفقات العمومية":
-    st.markdown('<div class="section-title">تدبير الصفقات العمومية SMART PRO+</div>', unsafe_allow_html=True)
+# --- واجهة المستخدم ---
+init_db() # تشغيل التأسيس
 
-    # تشغيل تأسيس الجداول
-    init_procurement_smart_tables()
+st.sidebar.title("🛠️ لوحة التحكم")
+menu = st.sidebar.selectbox("اختر القسم", ["الرئيسية", "الصفقات العمومية"])
 
-    # إنشاء التبويبات
-    tabs = st.tabs(["➕ صفقة جديدة", "📊 إدارة المتنافسين", "📄 إصدار الوثائق"])
+if menu == "الرئيسية":
+    st.title("مرحباً بك في تطبيق تدبير الصفقات 🚀")
+    st.write("هذا التطبيق مخصص لتبسيط استخراج المحاضر القانونية.")
 
-    with tabs[0]:
-        st.subheader("تسجيل بيانات الصفقة")
-        with st.form("new_market_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                m_ref = st.text_input("رقم الصفقة (N° AO)")
-                m_obj = st.text_area("موضوع الصفقة")
-            with col2:
-                m_est = st.number_input("التقدير المالي (Estimation)", min_value=0.0)
-                m_date = st.date_input("تاريخ اليوم", value=date.today())
-            
-            submit = st.form_submit_button("حفظ البيانات")
-            
-            if submit:
-                if m_ref and m_obj:
-                    # هنا نضع كود الحفظ في قاعدة البيانات
-                    st.success(f"✅ تم تسجيل الصفقة رقم {m_ref} بنجاح")
+elif menu == "الصفقات العمومية":
+    st.header("🏢 إدارة الصفقات العمومية")
+    
+    t1, t2 = st.tabs(["➕ إضافة صفقة", "📄 استخراج PV1"])
+    
+    with t1:
+        with st.form("add_market"):
+            ref = st.text_input("رقم الصفقة")
+            obj = st.text_area("موضوع الصفقة")
+            amt = st.number_input("التقدير المالي", min_value=0.0)
+            if st.form_submit_button("حفظ"):
+                if ref and obj:
+                    conn = get_conn()
+                    conn.execute("INSERT INTO markets (market_ref, market_object, estimate_amount, created_at) VALUES (?,?,?,?)",
+                                 (ref, obj, amt, str(date.today())))
+                    conn.commit()
+                    conn.close()
+                    st.success("تم الحفظ بنجاح في قاعدة البيانات!")
                 else:
-                    st.error("⚠️ يرجى ملء الحقول الأساسية (الرقم والموضوع)")
+                    st.error("يرجى ملء الحقول المطلوبة")
 
-    with tabs[1]:
-        st.subheader("لائحة المتنافسين")
-        st.info("هنا يمكنك إضافة الشركات المتنافسة ونقاطها التقنية.")
-
-    with tabs[2]:
-        st.subheader("تحميل المحاضر والوثائق")
-        all_refs = get_market_refs()
-        if all_refs:
-            selected = st.selectbox("اختر رقم الصفقة المراد معالجتها:", all_refs)
-            if st.button("توليد ملف PV1"):
-                st.write(f"جاري تحضير محضر فتح الأظرفة للصفقة: {selected}")
+    with t2:
+        conn = get_conn()
+        rows = conn.execute("SELECT * FROM markets").fetchall()
+        conn.close()
+        
+        if rows:
+            market_names = {r['market_ref']: r for r in rows}
+            choice = st.selectbox("اختر الصفقة", list(market_names.keys()))
+            
+            if st.button("تجهيز الملف للتحميل"):
+                selected_data = dict(market_names[choice])
+                docx_file = create_pv1(selected_data)
+                
+                st.download_button(
+                    label="💾 تحميل محضر PV1",
+                    data=docx_file,
+                    file_name=f"PV1_{choice}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
         else:
-            st.warning("لا توجد صفقات مسجلة في قاعدة البيانات حالياً.")
+            st.warning("لا توجد صفقات مسجلة بعد.")
