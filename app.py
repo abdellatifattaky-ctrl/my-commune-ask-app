@@ -2,111 +2,89 @@ import streamlit as st
 import pandas as pd
 from docxtpl import DocxTemplate
 import io
-from datetime import datetime
 import os
 
-# --- إعدادات الصفحة ---
-st.set_page_config(page_title="منصة صفقات جماعة أسكاون", layout="wide")
+# إعداد واجهة التطبيق
+st.set_page_config(page_title="منصة صفقات أسكاون", layout="wide")
 
-# --- دالة توليد الوثائق ---
-def generate_doc(template_name, data):
+def generate_document(template_name, data):
+    template_path = os.path.join("templates", template_name)
+    if not os.path.exists(template_path):
+        st.error(f"⚠️ الملف {template_name} غير موجود في مجلد templates")
+        return None
     try:
-        doc = DocxTemplate(f"templates/{template_name}")
+        doc = DocxTemplate(template_path)
         doc.render(data)
         buffer = io.BytesIO()
         doc.save(buffer)
         buffer.seek(0)
         return buffer
     except Exception as e:
-        st.error(f"خطأ في القالب {template_name}: {e}")
+        st.error(f"❌ خطأ أثناء التوليد: {e}")
         return None
 
-# --- واجهة التطبيق ---
-st.title("🇲🇦 المنصة المتكاملة لإدارة الصفقات العمومية - جماعة أسكاون")
+st.title("🇲🇦 نظام تدبير الصفقات العمومية - نسخة مطورة")
 
-tabs = st.tabs([
-    "📂 إعداد وفتح الأظرفة (PV1)", 
-    "📊 العروض المالية (PV2)", 
-    "🏆 الإرساء النهائي (PV3)", 
-    "✉️ أوامر الخدمة (OS)", 
-    "🏁 التسلم والأرشفة"
-])
+# تبويبات النظام
+tab1, tab2, tab3 = st.tabs(["إعداد المحاضر (PV)", "أوامر الخدمة (OS)", "التسلم والأرشفة"])
 
-# --- TAB 1: المحضر الأول ---
-with tabs[0]:
-    st.header("المحضر رقم 1: فتح الأظرفة")
+with tab1:
+    st.header("بيانات النشر والمحاضر")
+    
+    with st.expander("📅 تواريخ النشر القانونية (Publicité)"):
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            date_ar = st.date_input("النشر بالجريدة العربية")
+        with col_b:
+            date_fr = st.date_input("النشر بالجريدة الفرنسية")
+        with col_c:
+            date_portal = st.date_input("النشر ببوابة الصفقات")
+
     col1, col2 = st.columns(2)
     with col1:
-        n_ao = st.text_input("رقم طلب العروض", value="01/ask/2026")
-        date_seance = st.date_input("تاريخ الجلسة الأولى")
-    with col2:
+        num_ao = st.text_input("رقم طلب العروض (N° AO)", value="01/ask/2025")
         objet = st.text_area("موضوع الصفقة")
-    
-    if st.button("توليد PV1"):
-        data = {"n_ao": n_ao, "date": str(date_seance), "objet": objet}
-        file = generate_doc("1er_PV.docx", data)
+    with col2:
+        estimation = st.number_input("تقدير الإدارة (HT/TTC)", value=1060020.00)
+        presidents = st.text_input("رئيس اللجنة", value="ZILALI MOHAMED")
+
+    if st.button("توليد المحضر الأول (1er PV)"):
+        data_pv1 = {
+            "num_ao": num_ao,
+            "objet": objet,
+            "estimation": f"{estimation:,.2f}",
+            "date_ar": date_ar.strftime('%d/%m/%Y'),
+            "date_fr": date_fr.strftime('%d/%m/%Y'),
+            "date_portal": date_portal.strftime('%d/%m/%Y'),
+            "president": presidents
+        }
+        file = generate_document("1er_PV.docx", data_pv1)
         if file:
-            st.download_button("تحميل المحضر الأول", file, f"PV1_{n_ao}.docx")
+            st.download_button("📥 تحميل PV1", file, f"PV1_{num_ao.replace('/', '_')}.docx")
 
-# --- TAB 2: المحضر الثاني وحساب الأثمان ---
-with tabs[1]:
-    st.header("المحضر رقم 2: تحليل الأثمان")
-    estimation = st.number_input("تقدير الإدارة (Estimation)", min_value=0.0)
+with tab2:
+    st.header("أوامر الخدمة")
+    os_option = st.selectbox("اختر نوع الوثيقة", ["Notification d'approbation", "Commencement des travaux"])
     
-    st.subheader("إدخال عروض المتنافسين")
-    df_offers = pd.DataFrame([{"شركة": "", "العرض": 0.0}])
-    edited_df = st.data_editor(df_offers, num_rows="dynamic")
-    
-    if st.button("حساب ثمن المرجع وتوليد PV2"):
-        offers = edited_df["العرض"].tolist()
-        valid_offers = [o for o in offers if o > 0]
-        if valid_offers:
-            ref_price = (estimation + (sum(valid_offers)/len(valid_offers))) / 2
-            st.success(f"ثمن المرجع: {ref_price:,.2f} درهم")
-            
-            data_pv2 = {"estimation": estimation, "ref_price": ref_price, "n_ao": n_ao}
-            file_pv2 = generate_doc("2eme_pv.docx", data_pv2)
-            st.download_button("تحميل المحضر الثاني", file_pv2, f"PV2_{n_ao}.docx")
+    with st.form("os_data"):
+        ste_name = st.text_input("اسم الشركة", value="NOOR SAD TRAVAUX")
+        gerant = st.text_input("المسير", value="AIT EL MAALE M HALID")
+        registre_n = st.text_input("رقم السجل", value="01/2025")
+        
+        if st.form_submit_button("توليد الوثيقة"):
+            tmpl = "os_notification.docx" if "Notification" in os_option else "os_commencement.docx"
+            data_os = {
+                "num_marche": num_ao,
+                "nom_societe": ste_name,
+                "nom_gerant": gerant,
+                "num_registre": registre_n,
+                "objet": objet
+            }
+            file_os = generate_document(tmpl, data_os)
+            if file_os:
+                st.download_button(f"📥 تحميل {os_option}", file_os, f"OS_{num_ao.replace('/', '_')}.docx")
 
-# --- TAB 3: المحضر الثالث ---
-with tabs[2]:
-    st.header("المحضر رقم 3: الإرساء النهائي")
-    winner = st.text_input("الشركة الفائزة")
-    final_amount = st.number_input("المبلغ النهائي")
-    
-    if st.button("توليد PV3"):
-        data_pv3 = {"winner": winner, "amount": final_amount, "n_ao": n_ao}
-        file_pv3 = generate_doc("3eme_pv.docx", data_pv3)
-        st.download_button("تحميل المحضر النهائي", file_pv3, f"PV3_{n_ao}.docx")
-
-# --- TAB 4: أوامر الخدمة (OS) ---
-with tabs[3]:
-    st.header("توليد أوامر الخدمة")
-    type_os = st.selectbox("نوع الأمر", ["تبليغ المصادقة (Notification)", "بداية الأشغال (Commencement)"])
-    
-    with st.expander("بيانات المقاول"):
-        nom_ste = st.text_input("اسم الشركة", key="os_ste")
-        gerant = st.text_input("المسير")
-        registre = st.text_input("رقم السجل")
-
-    if st.button("توليد أمر الخدمة"):
-        os_template = "os_notification.docx" if "Notification" in type_os else "os_commencement.docx"
-        data_os = {"nom_societe": nom_ste, "nom_gerant": gerant, "num_registre": registre, "num_marche": n_ao}
-        file_os = generate_doc(os_template, data_os)
-        st.download_button(f"تحميل {type_os}", file_os, f"OS_{n_ao}.docx")
-
-# --- TAB 5: التسلم والأرشفة ---
-with tabs[4]:
-    st.header("المحاضر النهائية والتخزين")
-    type_rec = st.radio("نوع المحضر", ["تسلم مؤقت (Provisoire)", "تسلم نهائي (Définitif)"])
-    date_rec = st.date_input("تاريخ التسلم")
-    
-    if st.button("توليد محضر التسلم"):
-        data_rec = {"type": type_rec, "date": str(date_rec), "n_ao": n_ao}
-        file_rec = generate_doc("pv_reception.docx", data_rec)
-        st.download_button("تحميل محضر التسلم", file_rec, f"PV_Reception_{n_ao}.docx")
-    
-    st.divider()
-    st.subheader("📁 نظام الأرشفة")
-    # محاكاة مكان التخزين
-    st.info("يتم تنظيم الملفات آلياً في مجلد الصفقات حسب السنة ورقم الصفقة.")
+with tab3:
+    st.header("التسلم النهائي والمؤقت")
+    # هنا يمكنك إضافة واجهة التسلم التي شرحناها سابقاً
+    st.info("قم برفع قالب pv_reception.docx لتفعيل هذا القسم.")
