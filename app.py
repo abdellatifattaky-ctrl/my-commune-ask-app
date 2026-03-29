@@ -1,4 +1,3 @@
-import sqlite3
 from datetime import date
 from io import BytesIO
 
@@ -6,720 +5,990 @@ import pandas as pd
 import streamlit as st
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Inches, Pt, Cm
+from docx.shared import Pt, Cm
 from num2words import num2words
 
-st.set_page_config(
-    page_title="نظام تدبير مصالح الجماعة",
-    page_icon="🏛️",
-    layout="wide",
-)
 
-st.markdown("""
-<style>
-html, body, [class*="css"]  {
-    direction: rtl;
-    text-align: right;
-    font-family: "Arial", sans-serif;
-}
-.block-container { padding-top: 1rem; padding-bottom: 1rem; }
-.main-title {
-    background: linear-gradient(135deg, #0f766e, #115e59);
-    color: white;
-    padding: 22px;
-    border-radius: 18px;
-    margin-bottom: 18px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
-}
-.main-title h1 { margin: 0; font-size: 32px; }
-.main-title p { margin: 6px 0 0 0; opacity: 0.95; }
-.small-card {
-    background: #f8fafc;
-    padding: 16px;
-    border-radius: 16px;
-    border: 1px solid #e2e8f0;
-    text-align: center;
-}
-.small-card h3 { margin: 0; color: #0f766e; font-size: 28px; }
-.small-card p { margin: 6px 0 0 0; color: #475569; }
-.section-title {
-    font-size: 22px;
-    font-weight: 700;
-    color: #0f172a;
-    margin: 8px 0 10px 0;
-}
-.stTabs [data-baseweb="tab-list"] { gap: 8px; }
-.stTabs [data-baseweb="tab"] {
-    border-radius: 12px;
-    background-color: #f1f5f9;
-    padding: 8px 14px;
-}
-.stTabs [aria-selected="true"] {
-    background-color: #0f766e !important;
-    color: white !important;
-}
-</style>
-""", unsafe_allow_html=True)
+def render_procurement_module(get_conn, insert_record, fetch_all):
+    st.markdown('<div class="section-title">تدبير الصفقات العمومية SMART PRO+</div>', unsafe_allow_html=True)
 
-def get_conn():
-    return sqlite3.connect("commune.db", check_same_thread=False)
+    def init_procurement_smart_tables():
+        conn = get_conn()
+        c = conn.cursor()
 
-def init_db():
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS correspondences (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        reference TEXT, subject TEXT, ctype TEXT, department TEXT, status TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS licenses (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        applicant_name TEXT, license_type TEXT, status TEXT, notes TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS employees (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        full_name TEXT, department TEXT, position TEXT, status TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS projects (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        project_name TEXT, progress INTEGER, budget TEXT, status TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS procurements (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        reference TEXT, subject TEXT, owner TEXT, procedure_type TEXT, estimated_cost REAL,
-        fiscal_year INTEGER, department TEXT, market_type TEXT, status TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS cps (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        procurement_ref TEXT, cps_subject TEXT, execution_delay TEXT, temporary_guarantee TEXT,
-        final_guarantee TEXT, payment_terms TEXT, penalties TEXT, reception_terms TEXT,
-        notes TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS procurement_launches (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        procurement_ref TEXT, launch_date TEXT, publication_date TEXT, opening_date TEXT,
-        publication_number TEXT, publication_media TEXT, visit_required TEXT, place TEXT,
-        notes TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS procurement_openings (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        procurement_ref TEXT, session_date TEXT, session_time TEXT, chair_name TEXT,
-        members TEXT, notes TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS procurement_evaluations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        procurement_ref TEXT, company_name TEXT, administrative_result TEXT, technical_score REAL,
-        financial_offer REAL, ranking INTEGER, result TEXT, notes TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS procurement_attributions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        procurement_ref TEXT, awarded_company TEXT, provisional_date TEXT, final_date TEXT,
-        attributed_amount REAL, notes TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS os_orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        procurement_ref TEXT, os_type TEXT, company_name TEXT, os_date TEXT,
-        execution_delay TEXT, notes TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS pvs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        procurement_ref TEXT, pv_type TEXT, notes TEXT, content TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS bc_records (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        bc_ref TEXT, fiscal_year INTEGER, subject TEXT, department TEXT, expense_type TEXT,
-        budget_line TEXT, estimated_amount REAL, manager_name TEXT, notes TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS bc_consultations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        bc_ref TEXT, consultation_date TEXT, deadline_date TEXT, consultation_mode TEXT,
-        suppliers TEXT, notes TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS bc_offers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        bc_ref TEXT, supplier_name TEXT, offer_ref TEXT, offer_date TEXT, offer_amount REAL,
-        offer_status TEXT, notes TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS bc_awards (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        bc_ref TEXT, awarded_supplier TEXT, awarded_amount REAL, award_date TEXT,
-        execution_deadline TEXT, bc_issue_date TEXT, notes TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS bc_executions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        bc_ref TEXT, notification_date TEXT, start_date TEXT, expected_delivery TEXT,
-        execution_status TEXT, execution_progress INTEGER, notes TEXT, created_at TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS bc_receptions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        bc_ref TEXT, reception_date TEXT, reception_type TEXT, conformity TEXT,
-        invoice_number TEXT, invoice_date TEXT, invoice_amount REAL, payment_date TEXT,
-        notes TEXT, created_at TEXT)""")
-    conn.commit()
-    conn.close()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS market_master_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                market_ref TEXT,
+                market_object TEXT,
+                market_owner TEXT,
+                president_name TEXT,
+                commune_name TEXT,
+                province_name TEXT,
+                cercle_name TEXT,
+                caidat_name TEXT,
+                decision_ref TEXT,
+                decision_date TEXT,
+                publication_portal_date TEXT,
+                publication_newspaper_1 TEXT,
+                publication_newspaper_2 TEXT,
+                publication_newspaper_1_date TEXT,
+                publication_newspaper_2_date TEXT,
+                opening_date TEXT,
+                opening_time TEXT,
+                opening_place TEXT,
+                estimate_amount REAL,
+                estimate_amount_words TEXT,
+                rc_article_ref TEXT,
+                cps_article_ref TEXT,
+                company_awarded TEXT,
+                company_representative TEXT,
+                company_quality TEXT,
+                company_address TEXT,
+                approval_date TEXT,
+                os_register_number TEXT,
+                notification_date TEXT,
+                commencement_date TEXT,
+                complement_file_date TEXT,
+                invitation_date TEXT,
+                created_at TEXT
+            )
+        """)
 
-def insert_record(query, values):
-    conn = get_conn()
-    conn.execute(query, values)
-    conn.commit()
-    conn.close()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS market_commission_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                market_ref TEXT,
+                member_name TEXT,
+                member_role TEXT,
+                member_quality TEXT,
+                member_order_num INTEGER,
+                created_at TEXT
+            )
+        """)
 
-def fetch_all(query, params=()):
-    conn = get_conn()
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS market_subcommission_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                market_ref TEXT,
+                member_name TEXT,
+                member_role TEXT,
+                member_quality TEXT,
+                member_order_num INTEGER,
+                created_at TEXT
+            )
+        """)
 
-def count_rows(table_name):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(f"SELECT COUNT(*) FROM {table_name}")
-    count = cur.fetchone()[0]
-    conn.close()
-    return count
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS market_competitors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                market_ref TEXT,
+                competitor_name TEXT,
+                submitted_electronically TEXT,
+                admin_status TEXT,
+                technical_status TEXT,
+                technical_score REAL,
+                financial_offer REAL,
+                corrected_offer REAL,
+                remarks TEXT,
+                created_at TEXT
+            )
+        """)
 
-init_db()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS market_doc_counter (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                market_ref TEXT,
+                doc_type TEXT,
+                doc_number INTEGER,
+                created_at TEXT
+            )
+        """)
 
-with st.sidebar:
-    st.markdown("## 🏛️ نظام الجماعة")
-    st.markdown("إدارة يومية للمصالح والصفقات وBC")
-    menu = st.selectbox("اختر الوحدة", [
-        "لوحة القيادة", "المراسلات", "الرخص", "الموظفون",
-        "المشاريع", "الصفقات العمومية", "سندات الطلب BC",
+        conn.commit()
+        conn.close()
+
+    init_procurement_smart_tables()
+
+    def format_amount_words_fr(value):
+        try:
+            val = float(value)
+            words = num2words(val, lang="fr").upper()
+            cents = int(round((val - int(val)) * 100))
+            text = f"{words} DIRHAMS"
+            if cents > 0:
+                text += f" ET {num2words(cents, lang='fr').upper()} CENTIMES"
+            else:
+                text += " ,00 CTS"
+            return text
+        except Exception:
+            return "________________"
+
+    def fmt_number(value):
+        try:
+            return f"{float(value):,.2f}".replace(",", " ")
+        except Exception:
+            return str(value)
+
+    def get_market_refs():
+        rows = fetch_all(
+            "SELECT market_ref FROM market_master_data WHERE market_ref IS NOT NULL AND market_ref != '' ORDER BY id DESC"
+        )
+        refs = []
+        for r in rows:
+            if r["market_ref"] not in refs:
+                refs.append(r["market_ref"])
+        return refs
+
+    def get_market_data(market_ref):
+        rows = fetch_all(
+            "SELECT * FROM market_master_data WHERE market_ref = ? ORDER BY id DESC LIMIT 1",
+            (market_ref,)
+        )
+        return rows[0] if rows else None
+
+    def get_commission(market_ref):
+        return fetch_all(
+            "SELECT * FROM market_commission_members WHERE market_ref = ? ORDER BY member_order_num ASC, id ASC",
+            (market_ref,)
+        )
+
+    def get_subcommission(market_ref):
+        return fetch_all(
+            "SELECT * FROM market_subcommission_members WHERE market_ref = ? ORDER BY member_order_num ASC, id ASC",
+            (market_ref,)
+        )
+
+    def get_competitors(market_ref):
+        return fetch_all(
+            "SELECT * FROM market_competitors WHERE market_ref = ? ORDER BY id ASC",
+            (market_ref,)
+        )
+
+    def corrected_value(comp):
+        val = comp["corrected_offer"]
+        if val in [None, "", 0]:
+            return float(comp["financial_offer"] or 0)
+        return float(val)
+
+    def nearest_below_reference(ref_price, values):
+        eligible = [v for v in values if v <= ref_price]
+        if eligible:
+            return max(eligible)
+        return min(values) if values else None
+
+    def next_doc_number(market_ref, doc_type):
+        rows = fetch_all(
+            "SELECT MAX(doc_number) AS max_num FROM market_doc_counter WHERE market_ref = ? AND doc_type = ?",
+            (market_ref, doc_type)
+        )
+        max_num = rows[0]["max_num"] if rows and rows[0]["max_num"] is not None else 0
+        new_num = int(max_num) + 1
+        insert_record(
+            "INSERT INTO market_doc_counter (market_ref, doc_type, doc_number, created_at) VALUES (?, ?, ?, ?)",
+            (market_ref, doc_type, new_num, str(date.today()))
+        )
+        return new_num
+
+    def style_doc(doc):
+        section = doc.sections[0]
+        section.top_margin = Cm(2)
+        section.bottom_margin = Cm(2)
+        section.left_margin = Cm(2.2)
+        section.right_margin = Cm(2.2)
+
+    def add_top_header(doc, market):
+        for line in [
+            "ROYAUME DU MAROC",
+            "MINISTERE DE L’INTERIEUR",
+            f"PROVINCE DE {market['province_name'] or 'TAROUDANT'}",
+            f"CERCLE {market['cercle_name'] or 'TALIOUINE'}",
+            f"CAIDAT {market['caidat_name'] or 'ASKAOUEN'}",
+            f"COMMUNE {market['commune_name'] or 'ASKAOUEN'}",
+        ]:
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.add_run(line).bold = True
+        doc.add_paragraph("")
+
+    def add_doc_title(doc, title, subtitle=None):
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r = p.add_run(title)
+        r.bold = True
+        r.font.size = Pt(14)
+
+        if subtitle:
+            p2 = doc.add_paragraph()
+            p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            r2 = p2.add_run(subtitle)
+            r2.bold = True
+
+    def add_members_block(doc, members):
+        for m in members:
+            doc.add_paragraph(
+                f"· {m['member_name']} : {m['member_quality']} -------------------------------- {m['member_role']}"
+            )
+
+    def add_signature_table(doc, members, include_president=True):
+        names = []
+        if include_president:
+            president = [m for m in members if "PRESIDENT" in (m["member_role"] or "").upper()]
+            others = [m for m in members if m not in president]
+            names.extend(president + others)
+        else:
+            names.extend(members)
+
+        if not names:
+            return
+
+        cols = min(3, len(names))
+        rows_needed = (len(names) + cols - 1) // cols
+        table = doc.add_table(rows=rows_needed * 2, cols=cols)
+        table.style = "Table Grid"
+
+        idx = 0
+        for r in range(0, rows_needed * 2, 2):
+            for c in range(cols):
+                if idx < len(names):
+                    role_cell = table.rows[r].cells[c]
+                    name_cell = table.rows[r + 1].cells[c]
+                    role_cell.text = names[idx]["member_role"] or "MEMBRE"
+                    name_cell.text = names[idx]["member_name"]
+                    role_cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    name_cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    idx += 1
+
+    def add_footer_line(doc, place_name, date_value):
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        p.add_run(f"Fait à {place_name}, le : {date_value}")
+
+    def generate_pv1_docx(market_ref):
+        market = get_market_data(market_ref)
+        members = get_commission(market_ref)
+        competitors = get_competitors(market_ref)
+        admin_excluded = [c for c in competitors if c["admin_status"] == "مرفوض" or c["technical_status"] == "مرفوض"]
+        admin_admissible = [c for c in competitors if c["admin_status"] != "مرفوض"]
+        tech_excluded = [c for c in competitors if c["technical_status"] == "مرفوض"]
+        tech_admissible = [c for c in competitors if c["technical_status"] != "مرفوض"]
+        submembers = get_subcommission(market_ref)
+
+        doc = Document()
+        style_doc(doc)
+        add_top_header(doc, market)
+        add_doc_title(
+            doc,
+            "PROCES VERBAL D'APPEL D'OFFRES OUVERT",
+            f"SUR OFFRE DE PRIX N° : {market['market_ref']}\n1ère Séance Publique"
+        )
+
+        doc_num = next_doc_number(market_ref, "PV1")
+
+        doc.add_paragraph(
+            f"Le {market['opening_date']} à {market['opening_time']}, une commission d’appel d’offres, "
+            f"conformément à la décision de l’ordonnateur n° {market['decision_ref']} du {market['decision_date']}, "
+            f"est composée comme suit :"
+        )
+        add_members_block(doc, members)
+
+        doc.add_paragraph(
+            f"S’est réunie en séance publique dans {market['opening_place']}, Province {market['province_name'] or 'TAROUDANT'}, "
+            f"Cercle {market['cercle_name'] or 'TALIOUINE'}, Caidat {market['caidat_name'] or 'ASKAOUEN'}, "
+            f"en vue de procéder à l’ouverture des plis concernant l’appel d’offres ouvert national sur offre de prix "
+            f"N°: {market['market_ref']}, relatif aux {market['market_object']}."
+        )
+
+        doc.add_paragraph("Conformément à l’avis publié dans les journaux suivants :")
+        doc.add_paragraph(f"· {market['publication_newspaper_1']} du {market['publication_newspaper_1_date']}")
+        doc.add_paragraph(f"· {market['publication_newspaper_2']} du {market['publication_newspaper_2_date']}")
+        doc.add_paragraph(f"· La mise en ligne au portail des marchés publics la date du {market['publication_portal_date']}")
+
+        doc.add_paragraph("Le président cite les concurrents ayant envoyé leurs plis par voie électronique :")
+        if competitors:
+            for i, comp in enumerate(competitors, start=1):
+                doc.add_paragraph(f"{i}) {comp['competitor_name']}")
+        else:
+            doc.add_paragraph("Néant")
+
+        estimate_words = market["estimate_amount_words"] or format_amount_words_fr(market["estimate_amount"])
+
+        doc.add_paragraph("Le président s’assure de la présence des membres dont la présence est obligatoire.")
+        doc.add_paragraph(
+            f"Le président remet le support écrit contenant l’estimation des couts détaillés des prestations "
+            f"dont le montant est fixé à {fmt_number(market['estimate_amount'])} DHS TTC "
+            f"({estimate_words}) Toutes Taxes Comprises."
+        )
+        doc.add_paragraph("Les membres de la commission paraphent le support de l’estimation des couts des prestations.")
+        doc.add_paragraph("Le président cite les journaux et les références de publication au portail des marchés publics.")
+        doc.add_paragraph("Le président demande aux membres de la commission de formuler leurs réserves ou observations sur les vices éventuels qui entachent la procédure.")
+        doc.add_paragraph(
+            "Le président ouvre les enveloppes extérieures des plis contenant les dossiers des concurrents, cite dans chacun "
+            "la présence des enveloppes exigées. Il ouvre ensuite l’enveloppe portant la mention « dossiers administratif "
+            "et technique », énonce les pièces contenues dans chaque dossier (dossiers administratif et technique) "
+            "et dresse un état des pièces fournies par chaque concurrent."
+        )
+        doc.add_paragraph("Cette formalité accomplie, la séance publique est suspendue, les concurrents et le public se retirent de la salle.")
+        doc.add_paragraph(
+            "Ensuite, la commission se réunit à huis clos pour examiner les dossiers administratifs et techniques des concurrents, "
+            "elle écarte les concurrents ci-après pour les motifs suivants."
+        )
+
+        t1 = doc.add_table(rows=1, cols=2)
+        t1.style = "Table Grid"
+        t1.rows[0].cells[0].text = "Concurrents"
+        t1.rows[0].cells[1].text = "MOTIFIF D’ECARTEMENT"
+        if admin_excluded:
+            for c in admin_excluded:
+                row = t1.add_row().cells
+                row[0].text = c["competitor_name"]
+                row[1].text = c["remarks"] or "Non conforme"
+        else:
+            row = t1.add_row().cells
+            row[0].text = "NEANT"
+            row[1].text = "NEANT"
+
+        doc.add_paragraph("Elle arrête ensuite la liste des concurrents admissibles en précisant ceux dont les dossiers comportent des erreurs ou discordances à rectifier, à savoir :")
+        doc.add_paragraph("A- Liste des concurrents admissibles sans réserves :")
+        if admin_admissible:
+            for i, c in enumerate(admin_admissible, start=1):
+                doc.add_paragraph(f"{i}) {c['competitor_name']}")
+        else:
+            doc.add_paragraph("Néant")
+        doc.add_paragraph("B- Liste des concurrents admissibles avec réserves : Néant")
+
+        doc.add_paragraph("La séance publique est alors reprise et le président :")
+        doc.add_paragraph("· Donne lecture de la liste des soumissionnaires admissibles cités ci-dessus.")
+        doc.add_paragraph("· Rend contre décharge, aux concurrents écartés présents, leurs dossiers à l’exception des éléments d’information ayant été à l’origine de leur élimination. Il s’agit de : NEANT")
+        doc.add_paragraph(
+            "Le président procède ensuite à l’ouverture des enveloppes des soumissionnaires retenus portant la mention "
+            "« offres Technique », énonce les pièces contenues dans chaque dossier et dresse un état des pièces fournies par chaque concurrent."
+        )
+        doc.add_paragraph("Cette formalité accomplie, la séance publique est suspendue, les concurrents et le public se retirent de la salle.")
+        doc.add_paragraph(
+            "Ensuite, la commission se réunit à huis clos pour examiner les dossiers d’offres Technique des concurrents, "
+            "elle écarte les concurrents ci-après pour les motifs suivants."
+        )
+
+        t2 = doc.add_table(rows=1, cols=2)
+        t2.style = "Table Grid"
+        t2.rows[0].cells[0].text = "Concurrents"
+        t2.rows[0].cells[1].text = "MOTIFIF D’ECARTEMENT"
+        if tech_excluded:
+            for c in tech_excluded:
+                row = t2.add_row().cells
+                row[0].text = c["competitor_name"]
+                row[1].text = c["remarks"] or "Offre technique non conforme"
+        else:
+            row = t2.add_row().cells
+            row[0].text = "NEANT"
+            row[1].text = "NEANT"
+
+        doc.add_paragraph("Elle arrête ensuite la liste des concurrents admissibles en précisant ceux dont les dossiers comportent des erreurs ou discordances à rectifier, à savoir :")
+        doc.add_paragraph("A- Liste des concurrents admissibles sans réserves :")
+        if tech_admissible:
+            for c in tech_admissible:
+                doc.add_paragraph(f"· {c['competitor_name']}")
+        else:
+            doc.add_paragraph("Néant")
+        doc.add_paragraph("B- Liste des concurrents admissibles avec réserves : Néant")
+
+        doc.add_paragraph(
+            f"Ensuite, et conformément aux dispositions de l’article {market['rc_article_ref'] or '38'} du décret n°2-22-431 du 15 chaabane 1444 "
+            f"(08 mars 2023) relatif aux marchés publics la commission a décidé de consulter une sous-commission technique pour examiner "
+            f"et analyser les offres techniques fournies par les concurrents."
+        )
+        doc.add_paragraph("La sous-commission technique est composée de :")
+        if submembers:
+            for sm in submembers:
+                doc.add_paragraph(f"· {sm['member_name']} : {sm['member_quality']} -------------------------------- {sm['member_role']}")
+        else:
+            doc.add_paragraph("· ……………………….")
+            doc.add_paragraph("· ……………………….")
+            doc.add_paragraph("· ……………………….")
+
+        doc.add_paragraph("Le président de la commission suspend la séance et fixe la date de reprise des travaux de la séance.")
+        add_footer_line(doc, market["commune_name"] or "ASKAOUEN", market["opening_date"])
+        doc.add_paragraph(f"APPEL D’OFFRES OUVERT NATIONAL N° {market['market_ref']} (1ère Séance Publique)")
+        doc.add_paragraph(f"Objet : {market['market_object']}")
+        doc.add_paragraph("SIGNE : LE PRESIDENT")
+        doc.add_paragraph("LES MEMBRES")
+        add_signature_table(doc, members)
+
+        return doc, doc_num
+
+    def generate_rapport_technique_docx(market_ref):
+        market = get_market_data(market_ref)
+        submembers = get_subcommission(market_ref)
+        competitors = get_competitors(market_ref)
+        accepted = [c for c in competitors if float(c["technical_score"] or 0) >= 70]
+        rejected = [c for c in competitors if float(c["technical_score"] or 0) < 70]
+
+        doc = Document()
+        style_doc(doc)
+        add_top_header(doc, market)
+        add_doc_title(doc, "Rapport de la sous-commission technique", f"Appel d’offres ouvert {market['market_ref']}")
+
+        doc_num = next_doc_number(market_ref, "RAPPORT_TECHNIQUE")
+
+        doc.add_paragraph(market["market_object"])
+        doc.add_paragraph("EXAMEN DES OFFRES TECHNIQUES")
+        doc.add_paragraph(
+            f"Le {market['opening_date']} à ({market['opening_time']}) Heures faisant suite à la séance d’ouverture des plis et à la décision "
+            f"du président de la commission d’ouverture des plis de désigner une sous-commission technique, et cela conformément à l’article 38 "
+            f"du décret 2-22-431 relatif aux marchés publics pour examiner et analyser les offres techniques fournies par les concurrents admis."
+        )
+
+        doc.add_paragraph("Cette sous-commission technique est composée de :")
+        if submembers:
+            for sm in submembers:
+                doc.add_paragraph(f"· {sm['member_name']} : {sm['member_quality']} -------------------------------- {sm['member_role']}")
+        else:
+            doc.add_paragraph("· ……………………….")
+            doc.add_paragraph("· ……………………….")
+            doc.add_paragraph("· ……………………….")
+
+        doc.add_paragraph("La liste des concurrents présentés pour l’examen des offres techniques est composée des concurrents suivants :")
+        for i, c in enumerate(competitors, start=1):
+            doc.add_paragraph(f"{i}) {c['competitor_name']}")
+
+        doc.add_paragraph("Conclusion :")
+        doc.add_paragraph("Après l’examen des offres techniques des concurrents :")
+        doc.add_paragraph("La sous-commission technique arrête la liste des concurrents dont la note des offres techniques est supérieure à la note technique limite fixée par le règlement de consultation à 70 points à savoir :")
+        if accepted:
+            for c in accepted:
+                doc.add_paragraph(f"· {c['competitor_name']} : {c['technical_score']} points")
+        else:
+            doc.add_paragraph("· Néant")
+
+        doc.add_paragraph("La sous-commission technique arrête la liste des concurrents dont la note des offres techniques est inférieure à 70 points à savoir :")
+        if rejected:
+            for c in rejected:
+                doc.add_paragraph(f"· {c['competitor_name']} : {c['technical_score']} points")
+        else:
+            doc.add_paragraph("· Néant")
+
+        t = doc.add_table(rows=1, cols=2)
+        t.style = "Table Grid"
+        t.rows[0].cells[0].text = "Concurrent"
+        t.rows[0].cells[1].text = "Note technique"
+        for c in competitors:
+            row = t.add_row().cells
+            row[0].text = c["competitor_name"]
+            row[1].text = str(c["technical_score"] or 0)
+
+        doc.add_paragraph("Le présent rapport est établi pour servir d’outil à la commission d’ouverture des plis pour fonder son choix quant au rejet ou à l’acceptation de l’offre concernée.")
+        doc.add_paragraph("LES MEMBRES")
+        add_signature_table(doc, submembers, include_president=False)
+
+        return doc, doc_num
+
+    def generate_pv2_docx(market_ref):
+        market = get_market_data(market_ref)
+        members = get_commission(market_ref)
+        competitors = get_competitors(market_ref)
+        admissibles = [c for c in competitors if float(c["technical_score"] or 0) >= 70 and c["technical_status"] != "مرفوض"]
+
+        doc = Document()
+        style_doc(doc)
+        add_top_header(doc, market)
+        add_doc_title(
+            doc,
+            "PROCES VERBAL D'APPEL D'OFFRES OUVERT",
+            f"SUR OFFRE DE PRIX N° : {market['market_ref']}\n2eme Séance Publique"
+        )
+
+        doc_num = next_doc_number(market_ref, "PV2")
+
+        doc.add_paragraph(
+            f"Conformément à la décision de l’ordonnateur n° {market['decision_ref']} du {market['decision_date']}, "
+            f"la commission d’appel d’offres ouvert national sur offre de prix N°: {market['market_ref']}, "
+            f"relatif aux {market['market_object']}, composée comme suit :"
+        )
+        add_members_block(doc, members)
+
+        doc.add_paragraph(
+            f"S’est réunie en séance publique dans {market['opening_place']}, en vue d’étudier le rapport de la sous-commission technique "
+            f"qui examine et analyse les offres techniques fournies par les concurrents admissibles suite à l’étude des dossiers administratifs."
+        )
+        doc.add_paragraph(
+            f"Conformément aux critères d’évaluation des offres dans l’article {market['rc_article_ref'] or '...'} du règlement de consultation "
+            f"les concurrents ayant obtenu une note inférieure à (70 points) seront écartés."
+        )
+
+        doc.add_paragraph("Donne lecture de la liste et les notes des offres techniques des concurrents admissibles comme suite :")
+        t1 = doc.add_table(rows=1, cols=2)
+        t1.style = "Table Grid"
+        t1.rows[0].cells[0].text = "CONCURRENTS"
+        t1.rows[0].cells[1].text = "Note Technique (Nt)"
+        for c in competitors:
+            row = t1.add_row().cells
+            row[0].text = c["competitor_name"]
+            row[1].text = str(c["technical_score"] or 0)
+
+        doc.add_paragraph("A- Liste des concurrents admissibles sans réserves :")
+        if admissibles:
+            for i, c in enumerate(admissibles, start=1):
+                doc.add_paragraph(f"{i}) {c['competitor_name']}")
+        else:
+            doc.add_paragraph("Néant")
+        doc.add_paragraph("B- Liste des concurrents admissibles avec réserves : Néant")
+
+        doc.add_paragraph("La séance publique est alors reprise et le président procède ensuite à l’ouverture des enveloppes des concurrents admissibles portant la mention < offres financières > et donne lecture de la teneur des actes d’engagement, comme suit :")
+
+        t2 = doc.add_table(rows=1, cols=2)
+        t2.style = "Table Grid"
+        t2.rows[0].cells[0].text = "Concurrents"
+        t2.rows[0].cells[1].text = "Montant des actes d’engagement"
+        for c in admissibles:
+            row = t2.add_row().cells
+            row[0].text = c["competitor_name"]
+            row[1].text = f"{fmt_number(c['financial_offer'])} DHS"
+
+        doc.add_paragraph("La commission poursuit alors ses travaux à huis clos.")
+        doc.add_paragraph("Elle procède ensuite à la vérification des opérations arithmétiques des offres des concurrents admissibles et rectifie les erreurs de calcul relevées dans leurs actes d’engagement.")
+
+        t3 = doc.add_table(rows=1, cols=3)
+        t3.style = "Table Grid"
+        t3.rows[0].cells[0].text = "Concurrents"
+        t3.rows[0].cells[1].text = "Montant avant rectification"
+        t3.rows[0].cells[2].text = "Montant rectifié"
+
+        corrected_vals = []
+        for c in admissibles:
+            corr = corrected_value(c)
+            corrected_vals.append(corr)
+            row = t3.add_row().cells
+            row[0].text = c["competitor_name"]
+            row[1].text = f"{fmt_number(c['financial_offer'])} DHS"
+            row[2].text = f"{fmt_number(corr)} DHS"
+
+        estimate = float(market["estimate_amount"] or 0)
+        candidates = [estimate] + corrected_vals if corrected_vals else [estimate]
+        ref_price = sum(candidates) / len(candidates) if candidates else 0
+        winner_value = nearest_below_reference(ref_price, corrected_vals)
+
+        ranked = sorted(admissibles, key=lambda x: corrected_value(x))
+        winner = None
+        for c in ranked:
+            if corrected_value(c) == winner_value:
+                winner = c
+                break
+
+        doc.add_paragraph("Elle procède au calcul du prix de référence comme suit :")
+        doc.add_paragraph(f"· Estimation = {fmt_number(estimate)} dhs")
+        for c in admissibles:
+            doc.add_paragraph(f"· Offre financière {c['competitor_name']} = {fmt_number(corrected_value(c))} dhs")
+        doc.add_paragraph(f"· Le prix de référence = {fmt_number(ref_price)} dhs")
+
+        doc.add_paragraph("La commission procède au classement des offres des concurrents au regard du prix de référence ;")
+        doc.add_paragraph(f"Le prix de référence = {fmt_number(ref_price)} dhs")
+        for i, c in enumerate(ranked, start=1):
+            doc.add_paragraph(f"{i}. Offre financière {c['competitor_name']} = {fmt_number(corrected_value(c))} dhs")
+
+        if winner:
+            doc.add_paragraph(
+                f"L’offre économiquement la plus avantageuse à proposer au maître d’ouvrage, est celle qui est la plus proche par défaut "
+                f"du prix de référence, qui est celle présentée par {winner['competitor_name']} = {fmt_number(winner_value)} dhs."
+            )
+            doc.add_paragraph(
+                f"La commission invite, par voie électronique, le concurrent ayant présenté l’offre économiquement la plus avantageuse, "
+                f"qui est {winner['competitor_name']} dans un délai de 7 jours, après réception de la lettre, à produire le complément "
+                f"du dossier administratif visé à l’article {market['rc_article_ref'] or '...'} du Règlement de consultation."
+            )
+
+        add_footer_line(doc, market["commune_name"] or "ASKAOUEN", market["opening_date"])
+        doc.add_paragraph(f"APPEL D’OFFRES OUVERT NATIONAL N° {market['market_ref']} (2eme Séance Publique)")
+        doc.add_paragraph(f"Objet : {market['market_object']}")
+        doc.add_paragraph("SIGNE : LE PRESIDENT")
+        doc.add_paragraph("LES MEMBRES")
+        add_signature_table(doc, members)
+
+        return doc, doc_num
+
+    def generate_pv3_docx(market_ref):
+        market = get_market_data(market_ref)
+        members = get_commission(market_ref)
+        competitors = get_competitors(market_ref)
+        ranked = sorted(
+            [c for c in competitors if float(c["technical_score"] or 0) >= 70 and c["technical_status"] != "مرفوض"],
+            key=lambda x: corrected_value(x)
+        )
+        winner = ranked[0] if ranked else None
+
+        doc = Document()
+        style_doc(doc)
+        add_top_header(doc, market)
+        add_doc_title(
+            doc,
+            "PROCES VERBAL D'APPEL D'OFFRES OUVERT",
+            f"SUR OFFRE DE PRIX N° : {market['market_ref']}\n3eme Séance Publique"
+        )
+
+        doc_num = next_doc_number(market_ref, "PV3")
+
+        doc.add_paragraph(
+            f"Le {market['opening_date']} à {market['opening_time']}, une commission d’appel d’offres, conformément à la décision "
+            f"de l’ordonnateur n° {market['decision_ref']} du {market['decision_date']}, et composée comme suit :"
+        )
+        add_members_block(doc, members)
+
+        doc.add_paragraph(
+            f"S’est réunie en séance publique dans {market['opening_place']}, Province {market['province_name'] or 'TAROUDANT'}, "
+            f"Cercle {market['cercle_name'] or 'TALIOUINE'}, Caidat {market['caidat_name'] or 'ASKAOUEN'}, en vue de procéder "
+            f"à l’ouverture des plis concernant le complément du dossier administratif de l’attributaire de l’appel d’offres "
+            f"ouvert national sur offre de prix N°: {market['market_ref']}, relatif aux {market['market_object']}."
+        )
+
+        if winner:
+            doc.add_paragraph(
+                f"La commission s’assure du support ayant servi de moyen d’invitation du concurrent concerné {winner['competitor_name']} : "
+                f"Date d'envoi de la lettre : {market['invitation_date'] or '........'}"
+            )
+            doc.add_paragraph(
+                f"Elle vérifie les pièces et la réponse reçue : Dossier déposé le {market['complement_file_date'] or '........'} "
+                f"sur le portail marocain des marchés publics."
+            )
+            amount = corrected_value(winner)
+            amount_words = format_amount_words_fr(amount)
+            doc.add_paragraph(
+                f"La commission examine les pièces complémentaires du dossier administratif et la réponse reçue et les juge acceptables, "
+                f"et décide de proposer au maître d’ouvrage de retenir l’offre du concurrent ayant présenté l’offre la plus avantageuse "
+                f"à savoir {winner['competitor_name']} qui s’élève à la somme de {fmt_number(amount)} Dhs ({amount_words})."
+            )
+        else:
+            doc.add_paragraph("Aucun attributaire provisoire n’a été identifié.")
+
+        add_footer_line(doc, market["commune_name"] or "ASKAOUEN", market["opening_date"])
+        doc.add_paragraph(f"APPEL D’OFFRES OUVERT NATIONAL N° {market['market_ref']} (3eme Séance Publique)")
+        doc.add_paragraph(f"Objet : {market['market_object']}")
+        doc.add_paragraph("SIGNE : LE PRESIDENT")
+        doc.add_paragraph("LES MEMBRES")
+        add_signature_table(doc, members)
+
+        return doc, doc_num
+
+    def generate_os_notification_docx(market_ref):
+        market = get_market_data(market_ref)
+
+        doc = Document()
+        style_doc(doc)
+        add_top_header(doc, market)
+        add_doc_title(doc, "ORDRE DE SERVICE DE LA NOTIFICATION", f"DE L’APPROBATION DU MARCHE N°: {market['market_ref']}")
+
+        doc_num = next_doc_number(market_ref, "OS_NOTIFICATION")
+
+        doc.add_paragraph(
+            f"Le maître d’ouvrage représenté par {market['president_name']} en qualité du président de la commune "
+            f"{market['commune_name'] or 'ASKAOUEN'} informe {market['company_representative']} ayant pour qualité "
+            f"{market['company_quality']} agissant au nom et pour le compte de la société {market['company_awarded']}, "
+            f"faisant élection de domicile à {market['company_address']} que le marché qu’il a signé avec la commune "
+            f"{market['commune_name'] or 'ASKAOUEN'} ayant pour objet : {market['market_object']} est approuvé à la date du {market['approval_date']}."
+        )
+
+        doc.add_paragraph(
+            f"Par conséquent, l'intéressé est invité à acquitter les droits de timbre dus au titre du présent marché conformément à la législation "
+            f"en vigueur, la caution définitive est prévue pour ce marché conformément à l’article {market['cps_article_ref'] or '12'} du CPS."
+        )
+
+        doc.add_paragraph(
+            f"Le présent ordre de service, certifié conforme à la minute inscrit au registre sous le N°: {market['os_register_number']} "
+            f"sera notifié à {market['company_representative']} demeurant à {market['company_address']}."
+        )
+
+        doc.add_paragraph(f"A {market['commune_name'] or 'ASKAOUEN'}, Le {market['notification_date']}")
+        doc.add_paragraph("Le président :")
+
+        doc.add_paragraph("--------------------------------------------------------------------------------------------------------------------------------")
+        doc.add_paragraph(
+            f"Le : ..............., Je soussigné : {market['company_representative']} ayant pour qualité {market['company_quality']} "
+            f"agissant au nom et pour le compte de la société {market['company_awarded']}, faisant élection de domicile à {market['company_address']} "
+            f"avoir reçu une copie de l’ordre de service de l’approbation du marché {market['market_ref']} en date du : {market['approval_date']} "
+            f"inscrit au registre sous le N°: {market['os_register_number']}."
+        )
+
+        return doc, doc_num
+
+    def generate_os_commencement_docx(market_ref):
+        market = get_market_data(market_ref)
+
+        doc = Document()
+        style_doc(doc)
+        add_top_header(doc, market)
+        add_doc_title(doc, "ORDRE DE SERVICE A L’ENTREPRENEUR POUR COMMENCEMENT DES TRAVAUX", f"{market['market_ref']}")
+
+        doc_num = next_doc_number(market_ref, "OS_COMMENCEMENT")
+
+        doc.add_paragraph(
+            f"Le maître d’ouvrage représenté par {market['president_name']} en qualité du président de la commune "
+            f"{market['commune_name'] or 'ASKAOUEN'} informe {market['company_representative']} ayant pour qualité {market['company_quality']} "
+            f"agissant au nom et pour le compte de la société {market['company_awarded']}, faisant élection de domicile à {market['company_address']} "
+            f"que le marché qu’il a signé avec la commune {market['commune_name'] or 'ASKAOUEN'} ayant pour objet : {market['market_object']} est approuvé."
+        )
+
+        doc.add_paragraph(
+            f"Par conséquent, l'intéressé est invité à commencer les travaux objet du présent marché à compter du : {market['commencement_date']}"
+        )
+
+        doc.add_paragraph(
+            f"Le présent ordre de service, certifié conforme à la minute inscrit au registre sous le N°: {market['os_register_number']} "
+            f"sera notifié à {market['company_representative']} demeurant à {market['company_address']}."
+        )
+
+        doc.add_paragraph(f"A {market['commune_name'] or 'ASKAOUEN'}, Le {market['notification_date']}")
+        doc.add_paragraph("Le président :")
+
+        doc.add_paragraph("--------------------------------------------------------------------------------------------------------------------------------")
+        doc.add_paragraph(
+            f"Le : ..............., Je soussigné : {market['company_representative']} ayant pour qualité {market['company_quality']} "
+            f"agissant au nom et pour le compte de la société {market['company_awarded']}, faisant élection de domicile à {market['company_address']} "
+            f"avoir reçu une copie de l'ordre de service de commencement des prestations relatif au marché n° {market['market_ref']} "
+            f"et cela à compter du {market['commencement_date']}, inscrit au registre sous le N° : {market['os_register_number']}."
+        )
+
+        return doc, doc_num
+
+    tabs = st.tabs([
+        "Fiche marché",
+        "Commission",
+        "Sous-commission",
+        "Concurrents",
+        "Génération الوثائق",
+        "Registre"
     ])
-    st.markdown("---")
-    st.write(f"**التاريخ:** {date.today()}")
-    st.write("**المستخدم:** مدير المصالح")
-    st.info("البيانات تحفظ محليًا في قاعدة SQLite: commune.db")
 
-st.markdown("""
-<div class="main-title">
-    <h1>نظام تدبير مصالح الجماعة</h1>
-    <p>نسخة احترافية جاهزة لـ GitHub و Streamlit Community Cloud</p>
-</div>
-""", unsafe_allow_html=True)
-
-if menu == "لوحة القيادة":
-    st.markdown('<div class="section-title">لوحة القيادة</div>', unsafe_allow_html=True)
-    cols = st.columns(6)
-    tables = [("correspondences","المراسلات"),("licenses","الرخص"),("employees","الموظفون"),
-              ("projects","المشاريع"),("procurements","الصفقات"),("bc_records","BC")]
-    for col,(table,label) in zip(cols,tables):
-        with col:
-            st.markdown(f'<div class="small-card"><h3>{count_rows(table)}</h3><p>{label}</p></div>', unsafe_allow_html=True)
-    st.subheader("ملخص الوضعية")
-    st.dataframe([{"الوحدة": lbl, "عدد السجلات": count_rows(tbl)} for tbl,lbl in tables], use_container_width=True, hide_index=True)
-
-elif menu == "المراسلات":
-    st.markdown('<div class="section-title">تدبير المراسلات</div>', unsafe_allow_html=True)
-    with st.form("correspondence_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            reference = st.text_input("رقم المراسلة")
-            ctype = st.selectbox("النوع", ["واردة", "صادرة"])
-            department = st.text_input("المصلحة المعنية")
-        with c2:
-            subject = st.text_input("الموضوع")
-            status = st.selectbox("الحالة", ["قيد المعالجة", "محالة", "منتهية"])
-        if st.form_submit_button("حفظ المراسلة"):
-            insert_record("INSERT INTO correspondences (reference, subject, ctype, department, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                          (reference, subject, ctype, department, status, str(date.today())))
-            st.success("تم حفظ المراسلة بنجاح.")
-    st.dataframe(fetch_all("SELECT * FROM correspondences ORDER BY id DESC"), use_container_width=True, hide_index=True)
-
-elif menu == "الرخص":
-    st.markdown('<div class="section-title">تدبير الرخص</div>', unsafe_allow_html=True)
-    with st.form("license_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            applicant_name = st.text_input("اسم صاحب الطلب")
-            license_type = st.selectbox("نوع الرخصة", ["رخصة بناء", "رخصة سكن", "رخصة استغلال"])
-        with c2:
-            status = st.selectbox("الحالة", ["قيد الدراسة", "مقبولة", "مرفوضة"])
-            notes = st.text_area("ملاحظات")
-        if st.form_submit_button("حفظ الطلب"):
-            insert_record("INSERT INTO licenses (applicant_name, license_type, status, notes, created_at) VALUES (?, ?, ?, ?, ?)",
-                          (applicant_name, license_type, status, notes, str(date.today())))
-            st.success("تم حفظ الطلب.")
-    st.dataframe(fetch_all("SELECT * FROM licenses ORDER BY id DESC"), use_container_width=True, hide_index=True)
-
-elif menu == "الموظفون":
-    st.markdown('<div class="section-title">تدبير الموظفين</div>', unsafe_allow_html=True)
-    with st.form("employee_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            full_name = st.text_input("الاسم الكامل")
-            department = st.text_input("المصلحة")
-        with c2:
-            position = st.text_input("الوظيفة")
-            status = st.selectbox("الحالة", ["حاضر", "غائب", "في رخصة"])
-        if st.form_submit_button("حفظ الموظف"):
-            insert_record("INSERT INTO employees (full_name, department, position, status, created_at) VALUES (?, ?, ?, ?, ?)",
-                          (full_name, department, position, status, str(date.today())))
-            st.success("تم حفظ الموظف.")
-    st.dataframe(fetch_all("SELECT * FROM employees ORDER BY id DESC"), use_container_width=True, hide_index=True)
-
-elif menu == "المشاريع":
-    st.markdown('<div class="section-title">تتبع المشاريع</div>', unsafe_allow_html=True)
-    with st.form("project_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            project_name = st.text_input("اسم المشروع")
-            progress = st.slider("نسبة التقدم", 0, 100, 0)
-        with c2:
-            budget = st.text_input("الميزانية")
-            status = st.selectbox("الحالة", ["متقدم", "متوسط", "متأخر"])
-        if st.form_submit_button("حفظ المشروع"):
-            insert_record("INSERT INTO projects (project_name, progress, budget, status, created_at) VALUES (?, ?, ?, ?, ?)",
-                          (project_name, progress, budget, status, str(date.today())))
-            st.success("تم حفظ المشروع.")
-    rows = fetch_all("SELECT * FROM projects ORDER BY id DESC")
-    st.dataframe(rows, use_container_width=True, hide_index=True)
-    for row in rows[:10]:
-        st.write(f"**{row['project_name']}**")
-        st.progress(int(row["progress"]))
-
-elif menu == "الصفقات العمومية":
-    st.markdown('<div class="section-title">تدبير الصفقات العمومية</div>', unsafe_allow_html=True)
-    tabs = st.tabs(["البيانات الأساسية","CPS","Lancement","Ouverture des plis","Évaluation","Attribution","OS","PVs","سجل الصفقات"])
     with tabs[0]:
-        with st.form("procurement_form"):
+        st.subheader("Fiche marché SMART PRO+")
+        with st.form("market_master_form"):
             c1, c2 = st.columns(2)
+
             with c1:
-                reference = st.text_input("مرجع الصفقة")
-                subject = st.text_input("موضوع الصفقة")
-                owner = st.text_input("صاحب المشروع", value="الجماعة الترابية")
-                procedure_type = st.selectbox("طريقة الإبرام", ["طلب عروض مفتوح","طلب عروض محدود","سند طلب","مباراة معمارية"])
-                estimated_cost = st.number_input("الكلفة التقديرية", min_value=0.0, step=1000.0)
+                market_ref = st.text_input("Référence du marché")
+                market_object = st.text_area("Objet du marché")
+                market_owner = st.text_input("Maître d’ouvrage", value="COMMUNE ASKAOUEN")
+                president_name = st.text_input("Président", value="ZILALI MOHAMED")
+                commune_name = st.text_input("Commune", value="ASKAOUEN")
+                province_name = st.text_input("Province", value="TAROUDANT")
+                cercle_name = st.text_input("Cercle", value="TALIOUINE")
+                caidat_name = st.text_input("Caidat", value="ASKAOUEN")
+                decision_ref = st.text_input("Référence décision ordonnateur")
+                decision_date = st.text_input("Date décision")
+                publication_portal_date = st.text_input("Date publication portail")
+
             with c2:
-                fiscal_year = st.number_input("السنة المالية", min_value=2024, max_value=2100, value=2026)
-                department = st.text_input("المصلحة المعنية")
-                market_type = st.selectbox("نوع الصفقة", ["أشغال","توريدات","خدمات"])
-                status = st.selectbox("المرحلة الحالية", ["إعداد","إطلاق","فتح الأظرفة","التقييم","الإسناد","التنفيذ"])
-            if st.form_submit_button("حفظ الصفقة"):
-                insert_record("""INSERT INTO procurements (reference, subject, owner, procedure_type, estimated_cost, fiscal_year, department, market_type, status, created_at)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                              (reference, subject, owner, procedure_type, estimated_cost, fiscal_year, department, market_type, status, str(date.today())))
-                st.success("تم حفظ بيانات الصفقة.")
-    with tabs[1]:
-        with st.form("cps_form"):
-            procurement_ref = st.text_input("مرجع الصفقة", key="cps_ref")
-            cps_subject = st.text_input("موضوع CPS")
-            execution_delay = st.text_input("أجل الإنجاز")
-            temporary_guarantee = st.text_input("الضمان المؤقت")
-            final_guarantee = st.text_input("الضمان النهائي")
-            payment_terms = st.text_area("شروط الأداء")
-            penalties = st.text_area("الغرامات")
-            reception_terms = st.text_area("شروط الاستلام")
-            notes = st.text_area("ملاحظات CPS")
-            if st.form_submit_button("حفظ CPS"):
-                insert_record("""INSERT INTO cps (procurement_ref, cps_subject, execution_delay, temporary_guarantee, final_guarantee, payment_terms, penalties, reception_terms, notes, created_at)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                              (procurement_ref, cps_subject, execution_delay, temporary_guarantee, final_guarantee, payment_terms, penalties, reception_terms, notes, str(date.today())))
-                st.success("تم حفظ CPS.")
-        st.dataframe(fetch_all("SELECT * FROM cps ORDER BY id DESC"), use_container_width=True, hide_index=True)
-    with tabs[2]:
-        with st.form("launch_form"):
-            procurement_ref = st.text_input("مرجع الصفقة", key="launch_ref")
-            launch_date = st.date_input("تاريخ الإطلاق")
-            publication_date = st.date_input("تاريخ النشر")
-            opening_date = st.date_input("تاريخ فتح الأظرفة")
-            publication_number = st.text_input("رقم الإعلان")
-            publication_media = st.multiselect("وسائل النشر", ["بوابة الصفقات العمومية","جرائد وطنية","لوحة الإعلانات"])
-            visit_required = st.selectbox("زيارة ميدانية", ["نعم","لا"])
-            place = st.text_input("مكان الجلسة", value="مقر الجماعة")
-            notes = st.text_area("ملاحظات")
-            if st.form_submit_button("حفظ lancement"):
-                insert_record("""INSERT INTO procurement_launches (procurement_ref, launch_date, publication_date, opening_date, publication_number, publication_media, visit_required, place, notes, created_at)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                              (procurement_ref, str(launch_date), str(publication_date), str(opening_date), publication_number, ", ".join(publication_media), visit_required, place, notes, str(date.today())))
-                st.success("تم حفظ معطيات الإطلاق.")
-        st.dataframe(fetch_all("SELECT * FROM procurement_launches ORDER BY id DESC"), use_container_width=True, hide_index=True)
-    with tabs[3]:
-        with st.form("opening_form"):
-            procurement_ref = st.text_input("مرجع الصفقة", key="opening_ref")
-            session_date = st.date_input("تاريخ الجلسة")
-            session_time = st.time_input("ساعة الجلسة")
-            chair_name = st.text_input("رئيس اللجنة")
-            members = st.text_area("أعضاء اللجنة")
-            notes = st.text_area("ملاحظات الجلسة")
-            if st.form_submit_button("حفظ جلسة الفتح"):
-                insert_record("""INSERT INTO procurement_openings (procurement_ref, session_date, session_time, chair_name, members, notes, created_at)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                              (procurement_ref, str(session_date), str(session_time), chair_name, members, notes, str(date.today())))
-                st.success("تم حفظ جلسة فتح الأظرفة.")
-        st.dataframe(fetch_all("SELECT * FROM procurement_openings ORDER BY id DESC"), use_container_width=True, hide_index=True)
-    with tabs[4]:
-        with st.form("evaluation_form"):
-            procurement_ref = st.text_input("مرجع الصفقة", key="eval_ref")
-            company_name = st.text_input("اسم المتنافس")
-            administrative_result = st.selectbox("الملف الإداري", ["مقبول","مرفوض"])
-            technical_score = st.number_input("التنقيط التقني", min_value=0.0, max_value=100.0, step=1.0)
-            financial_offer = st.number_input("العرض المالي", min_value=0.0, step=1000.0)
-            ranking = st.number_input("الترتيب", min_value=1, step=1)
-            result = st.selectbox("النتيجة", ["مقبول","مقصى"])
-            notes = st.text_area("ملاحظات")
-            if st.form_submit_button("حفظ التقييم"):
-                insert_record("""INSERT INTO procurement_evaluations (procurement_ref, company_name, administrative_result, technical_score, financial_offer, ranking, result, notes, created_at)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                              (procurement_ref, company_name, administrative_result, technical_score, financial_offer, ranking, result, notes, str(date.today())))
-                st.success("تم حفظ التقييم.")
-        st.dataframe(fetch_all("SELECT * FROM procurement_evaluations ORDER BY id DESC"), use_container_width=True, hide_index=True)
-    with tabs[5]:
-        with st.form("attribution_form"):
-            procurement_ref = st.text_input("مرجع الصفقة", key="attr_ref")
-            awarded_company = st.text_input("نائل الصفقة")
-            provisional_date = st.date_input("تاريخ الإسناد المؤقت")
-            final_date = st.date_input("تاريخ الإسناد النهائي")
-            attributed_amount = st.number_input("مبلغ الإسناد", min_value=0.0, step=1000.0)
-            notes = st.text_area("ملاحظات")
-            if st.form_submit_button("حفظ الإسناد"):
-                insert_record("""INSERT INTO procurement_attributions (procurement_ref, awarded_company, provisional_date, final_date, attributed_amount, notes, created_at)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                              (procurement_ref, awarded_company, str(provisional_date), str(final_date), attributed_amount, notes, str(date.today())))
-                st.success("تم حفظ الإسناد.")
-        st.dataframe(fetch_all("SELECT * FROM procurement_attributions ORDER BY id DESC"), use_container_width=True, hide_index=True)
-    with tabs[6]:
-        with st.form("os_form"):
-            procurement_ref = st.text_input("مرجع الصفقة", key="os_ref")
-            os_type = st.selectbox("نوع الأمر بالخدمة", ["OS Notification","OS Commencement"])
-            company_name = st.text_input("اسم المقاولة")
-            os_date = st.date_input("تاريخ OS")
-            execution_delay = st.text_input("أجل التنفيذ")
-            notes = st.text_area("ملاحظات")
-            if st.form_submit_button("حفظ OS"):
-                insert_record("""INSERT INTO os_orders (procurement_ref, os_type, company_name, os_date, execution_delay, notes, created_at)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                              (procurement_ref, os_type, company_name, str(os_date), execution_delay, notes, str(date.today())))
-                st.success("تم حفظ OS.")
-        st.dataframe(fetch_all("SELECT * FROM os_orders ORDER BY id DESC"), use_container_width=True, hide_index=True)
-    with tabs[7]:
-        procurement_ref = st.text_input("مرجع الصفقة", key="pv_ref")
-        pv_type = st.selectbox("نوع المحضر", ["PV ouverture des plis","PV évaluation technique","PV évaluation financière","PV attribution provisoire","PV attribution définitive","PV réception provisoire","PV réception définitive"])
-        pv_notes = st.text_area("ملاحظات المحضر")
-        pv_content = st.text_area("محتوى المحضر", height=260)
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("حفظ PV"):
-                insert_record("INSERT INTO pvs (procurement_ref, pv_type, notes, content, created_at) VALUES (?, ?, ?, ?, ?)",
-                              (procurement_ref, pv_type, pv_notes, pv_content, str(date.today())))
-                st.success("تم حفظ المحضر.")
-        with c2:
-            st.download_button("تحميل المحضر", data=pv_content if pv_content else "لا يوجد محتوى",
-                               file_name=f"{pv_type.replace(' ', '_')}.txt", mime="text/plain")
-        st.dataframe(fetch_all("SELECT * FROM pvs ORDER BY id DESC"), use_container_width=True, hide_index=True)
-    with tabs[8]:
-        st.dataframe(fetch_all("SELECT * FROM procurements ORDER BY id DESC"), use_container_width=True, hide_index=True)
+                publication_newspaper_1 = st.text_input("Journal 1")
+                publication_newspaper_1_date = st.text_input("Date Journal 1")
+                publication_newspaper_2 = st.text_input("Journal 2")
+                publication_newspaper_2_date = st.text_input("Date Journal 2")
+                opening_date = st.text_input("Date ouverture")
+                opening_time = st.text_input("Heure ouverture", value="10h")
+                opening_place = st.text_input("Lieu ouverture", value="Salle de réunion de la Commune ASKAOUEN")
+                estimate_amount = st.number_input("Montant estimation TTC", min_value=0.0, step=1000.0)
+                estimate_amount_words = st.text_input("Montant en lettres")
+                rc_article_ref = st.text_input("Article RC / juridique", value="38")
+                cps_article_ref = st.text_input("Article CPS", value="12")
 
-elif menu == "سندات الطلب BC":
-    st.markdown('<div class="section-title">تدبير سندات الطلب BC</div>', unsafe_allow_html=True)
-    bc_tabs = st.tabs(["المعطيات الأساسية","الاستشارة","العروض","Comparatif","المحاضر","الإسناد","التنفيذ","الاستلام والأداء","رسالة الاستشارة","إشعار الإسناد","سجل BC"])
+            c3, c4 = st.columns(2)
+            with c3:
+                company_awarded = st.text_input("Société attributaire")
+                company_representative = st.text_input("Représentant société")
+                company_quality = st.text_input("Qualité du représentant", value="Gérant")
+                company_address = st.text_area("Adresse société")
+            with c4:
+                approval_date = st.text_input("Date approbation")
+                os_register_number = st.text_input("N° registre OS")
+                notification_date = st.text_input("Date notification")
+                commencement_date = st.text_input("Date commencement")
+                invitation_date = st.text_input("Date envoi invitation complément dossier")
+                complement_file_date = st.text_input("Date dépôt complément dossier")
 
-    with bc_tabs[0]:
-        with st.form("bc_basic_form"):
-            bc_ref = st.text_input("رقم سند الطلب")
-            fiscal_year = st.number_input("السنة", min_value=2024, max_value=2100, value=2026)
-            subject = st.text_input("موضوع سند الطلب")
-            department = st.text_input("المصلحة المعنية")
-            expense_type = st.selectbox("نوع النفقة", ["توريدات","خدمات","أشغال"])
-            budget_line = st.text_input("السطر الميزانياتي")
-            estimated_amount = st.number_input("الكلفة التقديرية", min_value=0.0, step=100.0)
-            manager_name = st.text_input("المسؤول عن الملف")
-            notes = st.text_area("ملاحظات")
-            if st.form_submit_button("حفظ BC"):
-                insert_record("""INSERT INTO bc_records (bc_ref, fiscal_year, subject, department, expense_type, budget_line, estimated_amount, manager_name, notes, created_at)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                              (bc_ref, fiscal_year, subject, department, expense_type, budget_line, estimated_amount, manager_name, notes, str(date.today())))
-                st.success("تم حفظ سند الطلب.")
-    with bc_tabs[1]:
-        with st.form("bc_consultation_form"):
-            bc_ref = st.text_input("رقم BC", key="bc_cons_ref")
-            consultation_date = st.date_input("تاريخ الاستشارة")
-            deadline_date = st.date_input("آخر أجل للتوصل بالعروض")
-            consultation_mode = st.selectbox("طريقة الاستشارة", ["يدوي","بريد إلكتروني","مراسلة","هاتف مع تأكيد"])
-            suppliers = st.text_area("الموردون أو المقاولات المستشارة")
-            notes = st.text_area("ملاحظات")
-            if st.form_submit_button("حفظ الاستشارة"):
-                insert_record("""INSERT INTO bc_consultations (bc_ref, consultation_date, deadline_date, consultation_mode, suppliers, notes, created_at)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                              (bc_ref, str(consultation_date), str(deadline_date), consultation_mode, suppliers, notes, str(date.today())))
-                st.success("تم حفظ الاستشارة.")
-        st.dataframe(fetch_all("SELECT * FROM bc_consultations ORDER BY id DESC"), use_container_width=True, hide_index=True)
-    with bc_tabs[2]:
-        with st.form("bc_offer_form"):
-            bc_ref = st.text_input("رقم BC", key="bc_offer_ref")
-            supplier_name = st.text_input("اسم المورد أو المقاولة")
-            offer_ref = st.text_input("رقم العرض")
-            offer_date = st.date_input("تاريخ التوصل")
-            offer_amount = st.number_input("مبلغ العرض", min_value=0.0, step=100.0)
-            offer_status = st.selectbox("وضعية العرض", ["مقبول","مرفوض","قيد الدراسة"])
-            notes = st.text_area("ملاحظات")
-            if st.form_submit_button("حفظ العرض"):
-                insert_record("""INSERT INTO bc_offers (bc_ref, supplier_name, offer_ref, offer_date, offer_amount, offer_status, notes, created_at)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                              (bc_ref, supplier_name, offer_ref, str(offer_date), offer_amount, offer_status, notes, str(date.today())))
-                st.success("تم حفظ العرض.")
-        st.dataframe(fetch_all("SELECT * FROM bc_offers ORDER BY id DESC"), use_container_width=True, hide_index=True)
-    with bc_tabs[3]:
-        st.subheader("📊 جدول مقارنة الأثمان")
-        bc_refs = [r["bc_ref"] for r in fetch_all("SELECT bc_ref FROM bc_records WHERE bc_ref IS NOT NULL AND bc_ref != '' ORDER BY id DESC")]
-        if bc_refs:
-            selected_bc = st.selectbox("اختر BC", bc_refs, key="comp_bc")
-            offers = fetch_all("""SELECT supplier_name, offer_amount, offer_status, notes FROM bc_offers WHERE bc_ref = ? ORDER BY offer_amount ASC""", (selected_bc,))
-            if offers:
-                df = pd.DataFrame([{"المورد": r["supplier_name"], "المبلغ": r["offer_amount"], "الحالة": r["offer_status"], "ملاحظات": r["notes"]} for r in offers])
-                st.dataframe(df, use_container_width=True, hide_index=True)
-                best = min(offers, key=lambda x: x["offer_amount"])
-                st.success(f"أقل عرض: {best['supplier_name']} - {best['offer_amount']} درهم")
-            else:
-                st.warning("لا توجد عروض لهذا BC.")
-        else:
-            st.warning("لا توجد سندات طلب محفوظة.")
-    with bc_tabs[4]:
-        def format_to_words_fr(amount_str):
-            try:
-                val = float(str(amount_str).replace(' ', '').replace(',', ''))
-                words = num2words(val, lang='fr').upper()
-                cents = int(round((val - int(val)) * 100))
-                text = f"{words} DIRHAMS"
-                if cents > 0:
-                    text += f" ET {num2words(cents, lang='fr').upper()} CENTIMES"
-                else:
-                    text += " ,00CTS"
-                return text
-            except:
-                return "________________"
-
-        st.subheader("🏛️ نظام استخراج محاضر BC")
-
-        with st.expander("📝 Détails Administratifs", expanded=True):
-            c1, c2 = st.columns(2)
-            num_bc = c1.text_input("N° BC", "01/ASK/2026")
-            date_pub = c2.date_input("Date de publication", date.today())
-            obj_bc = st.text_area("Objet", "Achat de matériel...")
-
-        st.markdown("### 👥 Membres de la Commission")
-        m1, m2, m3 = st.columns(3)
-        p_name = m1.text_input("Président", "MOHAMED ZILALI")
-        d_name = m2.text_input("Directeur du service", "M BAREK BAK")
-        t_name = m3.text_input("Technicien", "ABDELLATIF ATTAKY")
-
-        st.subheader("📊 Liste des concurrents")
-        df_init = pd.DataFrame([
-            {"Rang": 1, "Nom": "STE OUBRAIM SARL", "Montant": "69840.00"},
-            {"Rang": 2, "Nom": "DECO GRC", "Montant": "93120.00"},
-            {"Rang": 3, "Nom": "AIT MOUMOU REALISATION", "Montant": "102432.00"},
-            {"Rang": 4, "Nom": "KADEM SARL", "Montant": "111744.00"},
-            {"Rang": 5, "Nom": "TOUZANI 2ZD", "Montant": "114072.00"}
-        ])
-        data = st.data_editor(df_init, use_container_width=True)
-
-        st.divider()
-        c_pv1, c_pv2, c_pv3 = st.columns(3)
-        pv_num = c_pv1.selectbox("Numéro du PV:", [1, 2, 3, 4, 5, 6])
-        reunion_date = c_pv3.date_input("Date de la séance", date.today())
-        reunion_hour = c_pv2.text_input("Heure", "10h00mn")
-
-        is_infructueux = False
-        is_final_attr = False
-        if pv_num == 6:
-            res_6 = st.radio("Résultat du 6éme PV:", ["Attribution (إسناد الشركة 5)", "B.C Infructueux (غير مثمر)"])
-            is_infructueux = (res_6 == "B.C Infructueux (غير مثمر)")
-            is_final_attr = (res_6 == "Attribution (إسناد الشركة 5)")
-        else:
-            is_final_attr = st.checkbox("✅ Est-ce le PV d'attribution finale ?")
-
-        if st.button("🚀 إنشاء المحضر"):
-            doc = Document()
-            section = doc.sections[0]
-            section.top_margin, section.bottom_margin = Cm(2), Cm(2)
-            section.left_margin, section.right_margin = Cm(2.5), Cm(2)
-
-            header = section.header
-            htable = header.add_table(1, 2, Inches(6.5))
-            htable.rows[0].cells[0].paragraphs[0].text = "ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nCOMMUNE D'ASKAOUN"
-            htable.rows[0].cells[1].paragraphs[0].text = "المملكة المغربية\nوزارة الداخلية\nجماعة أسكاون"
-            htable.rows[0].cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
-
-            doc.add_paragraph("\n")
-            doc.add_heading(f"{pv_num}éme Procès verbal", 1).alignment = WD_ALIGN_PARAGRAPH.CENTER
-            doc.add_paragraph("De la commission d’ouverture des plis\nProcédure Bon de commande").alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-            p_obj = doc.add_paragraph()
-            p_obj.add_run(f"Objet : {obj_bc}").bold = True
-
-            doc.add_paragraph(f"Le {reunion_date.strftime('%d/%m/%Y')} à {reunion_hour}, la commission d’ouverture des plis composée comme suit :")
-            doc.add_paragraph(
-                f"- M. {p_name} : Président de la commission\n"
-                f"- M. {d_name} : Directeur du service\n"
-                f"- M. {t_name} : Technicien de la commune"
-            )
-
-            doc.add_paragraph(
-                f"S’est réunie dans la salle de réunion de la commune sur invitation du président concernant "
-                f"l’avis d’achat du bon de commande n° {num_bc} publié le : {date_pub.strftime('%d/%m/%Y')} "
-                f"sur le portail des marchés publics, en application des dispositions de l’article 91 du décret "
-                f"n° 2-22-431 (8 mars 2023) relatif aux marchés publics."
-            )
-
-            if pv_num == 1:
-                doc.add_paragraph("Après vérification du portail des marchés publics, les soumissionnaires qui ont déposé leurs offres de prix électroniquement sont :")
-                tab = doc.add_table(rows=1, cols=3)
-                tab.style = 'Table Grid'
-                hdr = tab.rows[0].cells
-                hdr[0].text = 'Rang'
-                hdr[1].text = 'Concurrent'
-                hdr[2].text = 'Montant TTC'
-
-                for _, r in data.iterrows():
-                    row = tab.add_row().cells
-                    row[0].text = str(r['Rang'])
-                    row[1].text = str(r['Nom'])
-                    row[2].text = f"{r['Montant']} MAD"
-
-                curr_company = data.iloc[0]['Nom']
-                curr_amount = data.iloc[0]['Montant']
-                amt_w = format_to_words_fr(curr_amount)
-
-                doc.add_paragraph(
-                    f"\nAprès examen des offres, le président de la commission invite la société : "
-                    f"{curr_company} qui est le moins disant pour un montant de {curr_amount} Dhs TTC "
-                    f"({amt_w}) à confirmer son offre par lettre de confirmation."
+            if st.form_submit_button("حفظ fiche marché"):
+                insert_record(
+                    """
+                    INSERT INTO market_master_data (
+                        market_ref, market_object, market_owner, president_name, commune_name, province_name,
+                        cercle_name, caidat_name, decision_ref, decision_date, publication_portal_date,
+                        publication_newspaper_1, publication_newspaper_2, publication_newspaper_1_date,
+                        publication_newspaper_2_date, opening_date, opening_time, opening_place, estimate_amount,
+                        estimate_amount_words, rc_article_ref, cps_article_ref, company_awarded,
+                        company_representative, company_quality, company_address, approval_date,
+                        os_register_number, notification_date, commencement_date, complement_file_date,
+                        invitation_date, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        market_ref, market_object, market_owner, president_name, commune_name, province_name,
+                        cercle_name, caidat_name, decision_ref, decision_date, publication_portal_date,
+                        publication_newspaper_1, publication_newspaper_2, publication_newspaper_1_date,
+                        publication_newspaper_2_date, opening_date, opening_time, opening_place, estimate_amount,
+                        estimate_amount_words, rc_article_ref, cps_article_ref, company_awarded,
+                        company_representative, company_quality, company_address, approval_date,
+                        os_register_number, notification_date, commencement_date, complement_file_date,
+                        invitation_date, str(date.today())
+                    )
                 )
-            else:
-                idx = pv_num - 1 if pv_num <= 5 else 4
-                prev_idx = idx - 1
-                prev_company = data.iloc[prev_idx]['Nom'] if prev_idx >= 0 else ""
-                curr_company = data.iloc[idx]['Nom']
-                curr_amount = data.iloc[idx]['Montant']
-                amt_w = format_to_words_fr(curr_amount)
+                st.success("تم حفظ fiche marché.")
 
-                if is_infructueux:
-                    doc.add_paragraph(
-                        f"Après vérification du portail des marchés publics, la commission constate que "
-                        f"la société {curr_company} n’a pas confirmé son offre par lettre de confirmation."
+    with tabs[1]:
+        refs = get_market_refs()
+        if not refs:
+            st.warning("أدخل fiche marché أولًا.")
+        else:
+            selected_ref = st.selectbox("Référence marché", refs, key="commission_ref")
+            with st.form("commission_form"):
+                c1, c2, c3, c4 = st.columns(4)
+                member_name = c1.text_input("Nom membre")
+                member_role = c2.text_input("Rôle", placeholder="PRESIDENT / MEMBRE")
+                member_quality = c3.text_input("Qualité", placeholder="Président / Représentant percepteur / Directeur ...")
+                member_order_num = c4.number_input("Ordre", min_value=1, step=1)
+                if st.form_submit_button("Ajouter membre commission"):
+                    insert_record(
+                        "INSERT INTO market_commission_members (market_ref, member_name, member_role, member_quality, member_order_num, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                        (selected_ref, member_name, member_role, member_quality, member_order_num, str(date.today()))
                     )
-                    p_inf = doc.add_paragraph("\nPAR CONSEQUENT, LA COMMISSION DECLARE QUE CE BON DE COMMANDE EST :")
-                    p_inf.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    res_inf = doc.add_paragraph("INFRUCTUEUX")
-                    res_inf.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    res_inf.runs[0].bold = True
-                    res_inf.runs[0].font.size = Pt(16)
-                elif is_final_attr:
-                    doc.add_paragraph(
-                        f"Après vérification du portail des marchés publics, la commission constate que "
-                        f"la société {curr_company} a confirmé son offre par lettre de confirmation."
+                    st.success("تمت إضافة عضو اللجنة.")
+            st.dataframe(get_commission(selected_ref), use_container_width=True, hide_index=True)
+
+    with tabs[2]:
+        refs = get_market_refs()
+        if not refs:
+            st.warning("أدخل fiche marché أولًا.")
+        else:
+            selected_ref = st.selectbox("Référence marché", refs, key="subcommission_ref")
+            with st.form("subcommission_form"):
+                c1, c2, c3, c4 = st.columns(4)
+                member_name = c1.text_input("Nom membre technique")
+                member_role = c2.text_input("Rôle", value="MEMBRE")
+                member_quality = c3.text_input("Qualité", placeholder="Technicien à la commune ...")
+                member_order_num = c4.number_input("Ordre technique", min_value=1, step=1)
+                if st.form_submit_button("Ajouter membre sous-commission"):
+                    insert_record(
+                        "INSERT INTO market_subcommission_members (market_ref, member_name, member_role, member_quality, member_order_num, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                        (selected_ref, member_name, member_role, member_quality, member_order_num, str(date.today()))
                     )
-                    p_res = doc.add_paragraph(
-                        f"Le président VALIDE la confirmation et ATTRIBUE le bon de commande à la société "
-                        f"{curr_company} pour un montant de : {curr_amount} Dhs TTC ({amt_w})."
+                    st.success("تمت إضافة عضو sous-commission.")
+            st.dataframe(get_subcommission(selected_ref), use_container_width=True, hide_index=True)
+
+    with tabs[3]:
+        refs = get_market_refs()
+        if not refs:
+            st.warning("أدخل fiche marché أولًا.")
+        else:
+            selected_ref = st.selectbox("Référence marché", refs, key="competitors_ref")
+            with st.form("competitor_form"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    competitor_name = st.text_input("Nom concurrent")
+                    submitted_electronically = st.selectbox("Dépôt électronique", ["Oui", "Non"])
+                    admin_status = st.selectbox("Statut administratif", ["مقبول", "مرفوض"])
+                    technical_status = st.selectbox("Statut technique", ["مقبول", "مرفوض"])
+                with c2:
+                    technical_score = st.number_input("Note technique", min_value=0.0, max_value=100.0, step=1.0)
+                    financial_offer = st.number_input("Offre financière", min_value=0.0, step=1000.0)
+                    corrected_offer = st.number_input("Offre rectifiée", min_value=0.0, step=1000.0)
+                    remarks = st.text_area("Remarques")
+
+                if st.form_submit_button("Ajouter concurrent"):
+                    insert_record(
+                        """
+                        INSERT INTO market_competitors (
+                            market_ref, competitor_name, submitted_electronically, admin_status,
+                            technical_status, technical_score, financial_offer, corrected_offer, remarks, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            selected_ref, competitor_name, submitted_electronically, admin_status,
+                            technical_status, technical_score, financial_offer, corrected_offer, remarks, str(date.today())
+                        )
                     )
-                    p_res.runs[0].bold = True
-                else:
-                    doc.add_paragraph(
-                        f"Après vérification du portail des marchés publics, la commission constate que "
-                        f"la société {prev_company} n’a pas confirmé son offre par lettre de confirmation."
+                    st.success("تمت إضافة المتنافس.")
+            st.dataframe(get_competitors(selected_ref), use_container_width=True, hide_index=True)
+
+    with tabs[4]:
+        refs = get_market_refs()
+        if not refs:
+            st.warning("أدخل fiche marché أولًا.")
+        else:
+            selected_ref = st.selectbox("Référence marché", refs, key="docs_ref")
+            c1, c2, c3 = st.columns(3)
+
+            with c1:
+                if st.button("📄 توليد PV1"):
+                    doc, num = generate_pv1_docx(selected_ref)
+                    bio = BytesIO()
+                    doc.save(bio)
+                    st.download_button(
+                        f"تحميل PV1 رقم {num}",
+                        data=bio.getvalue(),
+                        file_name=f"PV1_{selected_ref}_{num}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
-                    doc.add_paragraph(
-                        f"Après écartement de la société {prev_company}, le président de la commission invite "
-                        f"la société : {curr_company} qui est classé le {pv_num}éme pour un montant de "
-                        f"{curr_amount} Dhs TTC ({amt_w}) à confirmer son offre par lettre de confirmation."
+
+                if st.button("📄 توليد Rapport technique"):
+                    doc, num = generate_rapport_technique_docx(selected_ref)
+                    bio = BytesIO()
+                    doc.save(bio)
+                    st.download_button(
+                        f"تحميل Rapport رقم {num}",
+                        data=bio.getvalue(),
+                        file_name=f"Rapport_Technique_{selected_ref}_{num}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
 
-            doc.add_paragraph(f"\nFait à Askaouen, le {reunion_date.strftime('%d/%m/%Y')}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            sig_tab = doc.add_table(rows=2, cols=3)
-            sig_tab.rows[0].cells[0].text = "Le Président"
-            sig_tab.rows[0].cells[1].text = "Le Directeur"
-            sig_tab.rows[0].cells[2].text = "Le Technicien"
-            sig_tab.rows[1].cells[0].text = p_name
-            sig_tab.rows[1].cells[1].text = d_name
-            sig_tab.rows[1].cells[2].text = t_name
-            for r in sig_tab.rows:
-                for c in r.cells:
-                    c.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            with c2:
+                if st.button("📄 توليد PV2"):
+                    doc, num = generate_pv2_docx(selected_ref)
+                    bio = BytesIO()
+                    doc.save(bio)
+                    st.download_button(
+                        f"تحميل PV2 رقم {num}",
+                        data=bio.getvalue(),
+                        file_name=f"PV2_{selected_ref}_{num}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
 
-            bio = BytesIO()
-            doc.save(bio)
+                if st.button("📄 توليد OS Notification"):
+                    doc, num = generate_os_notification_docx(selected_ref)
+                    bio = BytesIO()
+                    doc.save(bio)
+                    st.download_button(
+                        f"تحميل OS Notification رقم {num}",
+                        data=bio.getvalue(),
+                        file_name=f"OS_Notification_{selected_ref}_{num}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
 
-            st.download_button(f"📥 تحميل المحضر رقم {pv_num}", bio.getvalue(), f"PV_{pv_num}_Askaouen.docx")
-    with bc_tabs[5]:
-        with st.form("bc_award_form"):
-            bc_ref = st.text_input("رقم BC", key="bc_award_ref")
-            awarded_supplier = st.text_input("نائل سند الطلب")
-            awarded_amount = st.number_input("مبلغ الإسناد", min_value=0.0, step=100.0)
-            award_date = st.date_input("تاريخ الإسناد")
-            execution_deadline = st.text_input("أجل التنفيذ")
-            bc_issue_date = st.date_input("تاريخ إصدار BC")
-            notes = st.text_area("ملاحظات")
-            if st.form_submit_button("حفظ الإسناد"):
-                insert_record("""INSERT INTO bc_awards (bc_ref, awarded_supplier, awarded_amount, award_date, execution_deadline, bc_issue_date, notes, created_at)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                              (bc_ref, awarded_supplier, awarded_amount, str(award_date), execution_deadline, str(bc_issue_date), notes, str(date.today())))
-                st.success("تم حفظ الإسناد.")
-        st.dataframe(fetch_all("SELECT * FROM bc_awards ORDER BY id DESC"), use_container_width=True, hide_index=True)
-    with bc_tabs[6]:
-        with st.form("bc_execution_form"):
-            bc_ref = st.text_input("رقم BC", key="bc_exec_ref")
-            notification_date = st.date_input("تاريخ التبليغ")
-            start_date = st.date_input("تاريخ بدء التنفيذ")
-            expected_delivery = st.date_input("تاريخ التسليم المتوقع")
-            execution_status = st.selectbox("حالة التنفيذ", ["لم يبدأ","جاري","تم"])
-            execution_progress = st.slider("نسبة الإنجاز", 0, 100, 0)
-            notes = st.text_area("ملاحظات التتبع")
-            if st.form_submit_button("حفظ التنفيذ"):
-                insert_record("""INSERT INTO bc_executions (bc_ref, notification_date, start_date, expected_delivery, execution_status, execution_progress, notes, created_at)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                              (bc_ref, str(notification_date), str(start_date), str(expected_delivery), execution_status, execution_progress, notes, str(date.today())))
-                st.success("تم حفظ وضعية التنفيذ.")
-        st.dataframe(fetch_all("SELECT * FROM bc_executions ORDER BY id DESC"), use_container_width=True, hide_index=True)
-    with bc_tabs[7]:
-        with st.form("bc_reception_form"):
-            bc_ref = st.text_input("رقم BC", key="bc_reception_ref")
-            reception_date = st.date_input("تاريخ الاستلام")
-            reception_type = st.selectbox("نوع الاستلام", ["مؤقت","نهائي"])
-            conformity = st.selectbox("المطابقة", ["مطابق","غير مطابق"])
-            invoice_number = st.text_input("رقم الفاتورة")
-            invoice_date = st.date_input("تاريخ الفاتورة")
-            invoice_amount = st.number_input("مبلغ الفاتورة", min_value=0.0, step=100.0)
-            payment_date = st.date_input("تاريخ الأداء")
-            notes = st.text_area("ملاحظات")
-            if st.form_submit_button("حفظ الاستلام والأداء"):
-                insert_record("""INSERT INTO bc_receptions (bc_ref, reception_date, reception_type, conformity, invoice_number, invoice_date, invoice_amount, payment_date, notes, created_at)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                              (bc_ref, str(reception_date), reception_type, conformity, invoice_number, str(invoice_date), invoice_amount, str(payment_date), notes, str(date.today())))
-                st.success("تم حفظ بيانات الاستلام والأداء.")
-        st.dataframe(fetch_all("SELECT * FROM bc_receptions ORDER BY id DESC"), use_container_width=True, hide_index=True)
-    with bc_tabs[8]:
-        st.subheader("📨 رسالة طلب الأثمنة")
-        bc_ref = st.text_input("رقم BC", key="consult_doc")
-        subject = st.text_input("موضوع الطلب")
-        suppliers = st.text_area("الموردون")
-        if st.button("توليد رسالة الاستشارة"):
-            text = f"""
-المملكة المغربية
-الجماعة الترابية
+            with c3:
+                if st.button("📄 توليد PV3"):
+                    doc, num = generate_pv3_docx(selected_ref)
+                    bio = BytesIO()
+                    doc.save(bio)
+                    st.download_button(
+                        f"تحميل PV3 رقم {num}",
+                        data=bio.getvalue(),
+                        file_name=f"PV3_{selected_ref}_{num}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
 
-الموضوع: طلب أثمنة
+                if st.button("📄 توليد OS Commencement"):
+                    doc, num = generate_os_commencement_docx(selected_ref)
+                    bio = BytesIO()
+                    doc.save(bio)
+                    st.download_button(
+                        f"تحميل OS Commencement رقم {num}",
+                        data=bio.getvalue(),
+                        file_name=f"OS_Commencement_{selected_ref}_{num}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
 
-يشرفنا أن نطلب منكم تقديم عرض أثمنة بخصوص:
-{subject}
-
-يرجى إرسال العرض في أقرب الآجال.
-
-الموردون:
-{suppliers}
-
-رقم BC:
-{bc_ref}
-"""
-            st.text_area("المعاينة", text, height=250)
-            st.download_button("تحميل رسالة الاستشارة", data=text,
-                               file_name=f"Lettre_consultation_{bc_ref if bc_ref else 'BC'}.txt", mime="text/plain")
-    with bc_tabs[9]:
-        st.subheader("📄 إشعار الإسناد")
-        bc_ref = st.text_input("BC", key="attr_doc")
-        company = st.text_input("الشركة")
-        amount = st.number_input("المبلغ", min_value=0.0, step=100.0, key="attr_amount")
-        if st.button("توليد إشعار الإسناد"):
-            text = f"""
-المملكة المغربية
-الجماعة الترابية
-
-إشعار بالإسناد
-
-نخبركم أنه تم إسناد سند الطلب رقم {bc_ref}
-لفائدتكم بمبلغ {amount} درهم.
-
-يرجى الاتصال بالمصلحة المختصة.
-"""
-            st.text_area("المعاينة", text, height=220)
-            st.download_button("تحميل إشعار الإسناد", data=text,
-                               file_name=f"Notification_attribution_{bc_ref if bc_ref else 'BC'}.txt", mime="text/plain")
-    with bc_tabs[10]:
-        st.dataframe(fetch_all("SELECT * FROM bc_records ORDER BY id DESC"), use_container_width=True, hide_index=True)
-
-st.markdown("---")
-st.caption("نظام تدبير مصالح الجماعة — نسخة احترافية جاهزة للنشر")
+    with tabs[5]:
+        st.subheader("Registre marchés")
+        st.dataframe(fetch_all("SELECT * FROM market_master_data ORDER BY id DESC"), use_container_width=True, hide_index=True)
+        st.subheader("Commission")
+        st.dataframe(fetch_all("SELECT * FROM market_commission_members ORDER BY id DESC"), use_container_width=True, hide_index=True)
+        st.subheader("Sous-commission")
+        st.dataframe(fetch_all("SELECT * FROM market_subcommission_members ORDER BY id DESC"), use_container_width=True, hide_index=True)
+        st.subheader("Concurrents")
+        st.dataframe(fetch_all("SELECT * FROM market_competitors ORDER BY id DESC"), use_container_width=True, hide_index=True)
+        st.subheader("Compteur الوثائق")
+        st.dataframe(fetch_all("SELECT * FROM market_doc_counter ORDER BY id DESC"), use_container_width=True, hide_index=True)
