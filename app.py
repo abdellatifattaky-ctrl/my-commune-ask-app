@@ -1,15 +1,4 @@
-from datetime import date
-from io import BytesIO
-
-import pandas as pd
-import streamlit as st
-from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt, Cm
-from num2words import num2words
-
-
-def render_procurement_module(get_conn, insert_record, fetch_all):
+elif menu == "الصفقات العمومية":
     st.markdown('<div class="section-title">تدبير الصفقات العمومية SMART PRO+</div>', unsafe_allow_html=True)
 
     def init_procurement_smart_tables():
