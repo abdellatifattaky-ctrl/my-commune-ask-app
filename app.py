@@ -1,57 +1,62 @@
 import streamlit as st
-import pandas as pd
-from docxtpl import DocxTemplate
+from docx import Document
+from docx.shared import Inches
 import io
-import os
+import pandas as pd
 
-# 1. إعداد المكتبات (تأكد من وجود docxtpl في requirements.txt)
-try:
-    from docxtpl import DocxTemplate
-except:
-    st.error("الرجاء إضافة docxtpl إلى ملف requirements.txt")
+# إعداد الصفحة
+st.set_page_config(page_title="منصة صفقات أسكاون", layout="wide")
 
-st.set_page_config(page_title="مصلحة الصفقات - أسكاون", layout="wide")
+st.title("🇲🇦 نظام توليد وثائق الصفقات - جماعة أسكاون")
+st.info("هذا النظام يولد الوثائق آلياً حتى بدون رفع قوالب خارجية")
 
-# 2. وظيفة إنشاء الملفات
-def create_document(data, type_doc):
-    # إنشاء ملف Word فارغ وبرمجته برمجياً (حل مؤقت لعدم وجود قوالب)
-    # في حالة وجود قوالب في مجلد templates سيستخدمها الكود تلقائياً
-    template_path = f"templates/{type_doc}.docx"
-    
-    if os.path.exists(template_path):
-        doc = DocxTemplate(template_path)
-        doc.render(data)
-        buffer = io.BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-        return buffer
-    else:
-        st.warning(f"⚠️ تنبيه: لم يتم العثور على ملف {type_doc}.docx في مجلد templates. يرجى رفعه ليعمل التصميم الخاص بك.")
-        return None
-
-# 3. واجهة المستخدم
-st.title("🇲🇦 تدبير صفقات جماعة أسكاون")
-st.info("هذه النسخة تدعم تواريخ النشر بالجرائد والبوابة")
-
-# مدخلات النشر
-with st.expander("📅 تواريخ النشر والإعلان", expanded=True):
-    col_ar, col_fr, col_web = st.columns(3)
-    d_ar = col_ar.date_input("الجريدة العربية (العلم)")
-    d_fr = col_fr.date_input("الجريدة الفرنسية (L'Opinion)")
-    d_web = col_web.date_input("بوابة الصفقات العمومية")
-
-# مدخلات الصفقة
+# --- 1. إدخال البيانات (بما فيها تواريخ النشر) ---
 with st.container():
-    c1, c2 = st.columns(2)
-    n_ao = c1.text_input("رقم طلب العروض", "01/ask/2025")
-    objet = c1.text_area("موضوع الصفقة")
-    est = c2.number_input("التقدير المالي (درهم)", value=1060020.00)
-    pres = c2.text_input("رئيس اللجنة", "ZILALI MOHAMED")
+    st.subheader("🗓️ تواريخ النشر والإعلان (Publicité)")
+    c_ar, c_fr, c_web = st.columns(3)
+    d_ar = c_ar.date_input("الجريدة العربية (العلم)")
+    d_fr = c_fr.date_input("الجريدة الفرنسية (L'Opinion)")
+    d_web = c_web.date_input("بوابة الصفقات العمومية")
 
-# أزرار التوليد
-st.markdown("---")
-if st.button("📄 توليد المحضر الأول (1er PV)"):
-    data = {
+    st.subheader("📝 معلومات الصفقة العامة")
+    col1, col2 = st.columns(2)
+    n_ao = col1.text_input("رقم طلب العروض", "01/ask/2025")
+    objet = col1.text_area("موضوع الصفقة الكامل")
+    est = col2.number_input("التقدير المالي (درهم)", value=1060020.00)
+    pres = col2.text_input("رئيس اللجنة", "ZILALI MOHAMED")
+
+# --- 2. محرك توليد الملف (بدون قوالب خارجية) ---
+def create_automatic_pv(data):
+    doc = Document()
+    
+    # رأس الصفحة
+    doc.add_paragraph("المملكة المغربية\nوزارة الداخلية\nعمالة تارودانت\nجماعة أسكاون").alignment = 0
+    
+    doc.add_heading(f"محضر فتح الأظرفة رقم {data['num_ao']}", 0)
+    
+    # نص المحضر
+    p = doc.add_paragraph()
+    p.add_run(f"بناءً على الإعلانات المنشورة في:\n").bold = True
+    p.add_run(f"- الجريدة العربية بتاريخ: {data['date_ar']}\n")
+    p.add_run(f"- الجريدة الفرنسية بتاريخ: {data['date_fr']}\n")
+    p.add_run(f"- بوابة الصفقات بتاريخ: {data['date_portal']}\n\n")
+    
+    p.add_run("اجتمعت اللجنة برئاسة السيد: ").add_run(f"{data['president']}").bold = True
+    p.add_run(f"\nبخصوص موضوع: {data['objet']}")
+    p.add_run(f"\nالتقدير المالي للمشروع: {data['estimation']} درهم")
+    
+    doc.add_page_break()
+    
+    # حفظ في ذاكرة النظام
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+# --- 3. أزرار التحميل ---
+st.divider()
+if st.button("📄 توليد وتحميل المحضر الأول (1er PV)"):
+    data_to_fill = {
         "num_ao": n_ao,
         "objet": objet,
         "estimation": f"{est:,.2f}",
@@ -61,12 +66,12 @@ if st.button("📄 توليد المحضر الأول (1er PV)"):
         "date_portal": d_web.strftime('%d/%m/%Y')
     }
     
-    file = create_document(data, "1er_PV")
-    if file:
-        st.download_button("📥 اضغط هنا لتحميل المحضر", file, f"PV1_{n_ao.replace('/','_')}.docx")
+    file_buffer = create_automatic_pv(data_to_fill)
+    st.download_button(
+        label="📥 اضغط هنا لتحميل المحضر بصيغة Word",
+        data=file_buffer,
+        file_name=f"PV1_{n_ao.replace('/', '_')}.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
 
-# تعليمات بسيطة لك
-st.sidebar.header("💡 تعليمات بسيطة")
-st.sidebar.write("1. ارفع ملفاتك بصيغة .docx")
-st.sidebar.write("2. ضعها داخل مجلد اسمه templates")
-st.sidebar.write("3. تأكد أن ملف requirements.txt يحتوي على كلمة docxtpl")
+st.sidebar.success("✅ النظام يعمل الآن بدون الحاجة لرفع قوالب يدويًا")
