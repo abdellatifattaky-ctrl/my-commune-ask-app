@@ -1,29 +1,57 @@
-# تأكد أن هذا السطر يبدأ بنفس مستوى إزاحة الدوال السابقة
+elif menu == "الصفقات العمومية":
+    st.markdown('<div class="section-title">تدبير الصفقات العمومية SMART PRO+</div>', unsafe_allow_html=True)
+
+    # 1. تعريف الدوال (Functions)
+    def init_procurement_smart_tables():
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS market_master_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                market_ref TEXT,
+                market_object TEXT,
+                estimate_amount REAL,
+                created_at TEXT
+            )
+        """)
+        # ... يمكنك إضافة باقي الجداول هنا بنفس النمط ...
+        conn.commit()
+        conn.close()
+
+    def get_market_refs():
+        rows = fetch_all("SELECT DISTINCT market_ref FROM market_master_data WHERE market_ref IS NOT NULL")
+        return [r["market_ref"] for r in rows]
+
+    def get_market_data(market_ref):
+        rows = fetch_all("SELECT * FROM market_master_data WHERE market_ref = ? LIMIT 1", (market_ref,))
+        return rows[0] if rows else None
+
+    # 2. تشغيل التأسيس (Execution)
+    # تأكد أن هذا السطر على نفس مستوى 'def'
     init_procurement_smart_tables()
 
-    # --- واجهة المستخدم الرئيسية ---
-    # ملاحظة: إذا كان هذا الكود داخل "elif menu == ...", يجب إزاحته بـ 4 مسافات فقط
-    tabs = st.tabs(["➕ تسجيل صفقة جديدة", "📊 إدارة الصفقات", "📄 توليد المحاضر"])
+    # 3. واجهة المستخدم (UI)
+    # تأكد أن 'tabs' تبدأ بنفس مستوى 'init_procurement...'
+    tabs = st.tabs(["➕ صفقة جديدة", "📄 إصدار الوثائق"])
 
     with tabs[0]:
-        st.subheader("إدخال بيانات الصفقة الأساسية")
-        with st.form("market_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                m_ref = st.text_input("مرجع الصفقة (N° AO)", placeholder="مثال: 01/2024")
-                m_obj = st.text_area("موضوع الصفقة")
-            with col2:
-                m_date = st.date_input("تاريخ فتح الأظرفة")
-                m_amount = st.number_input("التقدير المالي", min_value=0.0)
+        st.subheader("تسجيل بيانات الصفقة")
+        with st.form("new_market"):
+            m_ref = st.text_input("رقم الصفقة")
+            m_obj = st.text_area("الموضوع")
+            m_est = st.number_input("التقدير المالي", min_value=0.0)
+            btn = st.form_submit_button("حفظ")
+            if btn:
+                # استدعاء دالة الحفظ هنا
+                st.success(f"تم تسجيل الصفقة {m_ref}")
 
-            submit_btn = st.form_submit_button("حفظ")
-            if submit_btn:
-                st.success(f"تم حفظ {m_ref}")
-
-    # التبويب الثاني: عرض وإدارة الصفقات
     with tabs[1]:
-        st.subheader("قائمة الصفقات المسجلة")
+        st.subheader("تحميل الملفات")
         refs = get_market_refs()
         if refs:
-            selected_ref = st.selectbox("اختر صفقة:", refs)
-            # ... باقي الكود
+            selected = st.selectbox("اختر رقم الصفقة", refs)
+            if st.button("توليد ملف PV1"):
+                # هنا تستدعي دالة generate_pv1_docx التي كتبناها سابقاً
+                st.info("جاري تحضير الملف...")
+        else:
+            st.warning("لا توجد صفقات مسجلة.")
