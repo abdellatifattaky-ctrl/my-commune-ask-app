@@ -9,126 +9,145 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 # --- 1. إعدادات الصفحة ---
 st.set_page_config(page_title="SMART PRO+ الصفقات", layout="wide")
 
-# --- 2. قاعدة البيانات (إضافة جدول الحصص Lots) ---
+# --- 2. إدارة قاعدة البيانات (V4) ---
 def get_conn():
-    conn = sqlite3.connect("procurement.db")
+    conn = sqlite3.connect("procurement_v4.db")
     conn.row_factory = sqlite3.Row
     return conn
 
-def init_procurement_smart_tables():
+def init_db():
     conn = get_conn()
     c = conn.cursor()
     # جدول الصفقات
-    c.execute("""CREATE TABLE IF NOT EXISTS market_master_data (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, market_ref TEXT, market_object TEXT, 
-        procedure_type TEXT, estimate_amount REAL, date_journal_1 TEXT, 
-        date_journal_2 TEXT, date_portail TEXT, created_at TEXT)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS markets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        market_ref TEXT UNIQUE, market_object TEXT, procedure_type TEXT,
+        estimate_amount REAL, date_j1 TEXT, date_j2 TEXT,
+        date_portail TEXT, created_at TEXT)""")
     
-    # جدول الحصص (Lots)
-    c.execute("""CREATE TABLE IF NOT EXISTS market_lots (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, market_ref TEXT, lot_number INTEGER, 
-        lot_title TEXT, lot_estimate REAL)""")
-    
-    # جدول المتنافسين (مرتبط بالصفقة وبالحصة)
+    # جدول المتنافسين
     c.execute("""CREATE TABLE IF NOT EXISTS competitors (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, market_ref TEXT, lot_id INTEGER, 
+        id INTEGER PRIMARY KEY AUTOINCREMENT, market_ref TEXT,
         company_name TEXT, offer_amount REAL, status TEXT)""")
+    
+    # جدول أعضاء اللجنة
+    c.execute("""CREATE TABLE IF NOT EXISTS commission (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, market_ref TEXT,
+        member_name TEXT, member_role TEXT)""")
+    
     conn.commit()
     conn.close()
 
-# --- 3. دالة توليد الوورد المحترفة ---
-def generate_docx(title, m_data):
+# --- 3. دالة توليد ملفات الوورد الذكية ---
+def generate_docx(doc_title, m):
     doc = Document()
+    section = doc.sections[0]
+    section.top_margin, section.bottom_margin = Cm(2), Cm(2)
+    
+    # الرأس (Header)
     header = doc.add_paragraph()
     header.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    header.add_run("ROYAUME DU MAROC\nCOMMUNE ASKAOUEN").bold = True
+    header.add_run("ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nCOMMUNE ASKAOUEN").bold = True
+
+    doc.add_paragraph("\n")
     
+    # العنوان
     t = doc.add_paragraph()
     t.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    t.add_run(f"{title}\n{m_data['procedure_type'].upper()} N° : {m_data['market_ref']}").bold = True
-    
-    doc.add_paragraph(f"Objet: {m_data['market_object']}")
-    
-    # جلب الحصص والمتنافسين
-    conn = get_conn()
-    lots = conn.execute("SELECT * FROM market_lots WHERE market_ref = ?", (m_data['market_ref'],)).fetchall()
-    
-    if lots:
-        for lot in lots:
-            doc.add_paragraph(f"\nLOT N° {lot['lot_number']}: {lot['lot_title']}").bold = True
-            comps = conn.execute("SELECT * FROM competitors WHERE market_ref = ? AND lot_id = ?", (m_data['market_ref'], lot['id'])).fetchall()
-            if comps:
-                table = doc.add_table(rows=1, cols=3)
-                table.style = 'Table Grid'
-                hdr = table.rows[0].cells
-                hdr[0].text, hdr[1].text, hdr[2].text = "Concurrent", "Offre", "Décision"
-                for c in comps:
-                    row = table.add_row().cells
-                    row[0].text, row[1].text, row[2].text = c['company_name'], f"{c['offer_amount']} DHS", c['status']
-    conn.close()
+    run_t = t.add_run(f"{doc_title}\n{m['procedure_type'].upper()} N° : {m['market_ref']}")
+    run_t.bold = True
+    run_t.font.size = Pt(14)
 
+    # التفاصيل
+    doc.add_paragraph(f"Objet: {m['market_object']}")
+    doc.add_paragraph(f"Estimation: {m['estimate_amount']} DHS TTC")
+    doc.add_paragraph(f"Publicité: J1: {m['date_j1']} | J2: {m['date_j2']} | Portail: {m['date_portail']}")
+
+    # إضافة المتنافسين
+    conn = get_conn()
+    comps = conn.execute("SELECT * FROM competitors WHERE market_ref = ?", (m['market_ref'],)).fetchall()
+    if comps:
+        doc.add_paragraph("\nTableau des Concurrents:").bold = True
+        table = doc.add_table(rows=1, cols=3)
+        table.style = 'Table Grid'
+        hdr = table.rows[0].cells
+        hdr[0].text, hdr[1].text, hdr[2].text = "Concurrent", "Montant", "Décision"
+        for c in comps:
+            row = table.add_row().cells
+            row[0].text, row[1].text, row[2].text = c['company_name'], f"{c['offer_amount']} DHS", c['status']
+
+    # إضافة أعضاء اللجنة (التوقيعات)
+    members = conn.execute("SELECT * FROM commission WHERE market_ref = ?", (m['market_ref'],)).fetchall()
+    conn.close()
+    
+    if members:
+        doc.add_paragraph("\n\nSignature des membres de la commission :").bold = True
+        sig_table = doc.add_table(rows=0, cols=2)
+        for mem in members:
+            row = sig_table.add_row().cells
+            row[0].text = mem['member_name']
+            row[1].text = f"({mem['member_role']})"
+
+    doc.add_paragraph(f"\nFait à Askaouen, le {date.today()}")
     bio = io.BytesIO()
     doc.save(bio)
     return bio.getvalue()
 
-# --- 4. واجهة المستخدم (القالب الأصلي) ---
-init_procurement_smart_tables()
+# --- 4. واجهة المستخدم ---
+init_db()
 menu = st.sidebar.selectbox("القائمة", ["الصفقات العمومية"])
 
 if menu == "الصفقات العمومية":
-    st.markdown('<h2 style="text-align:center;">تدبير الصفقات SMART PRO+</h2>', unsafe_allow_html=True)
-    tabs = st.tabs(["➕ تسجيل صفقة", "📦 الحصص (Lots)", "👥 المتنافسون", "📄 تحميل المحاضر"])
+    st.markdown('<h2 style="text-align: center;">نظام SMART PRO+ لإدارة الصفقات</h2>', unsafe_allow_html=True)
+    tabs = st.tabs(["➕ تسجيل صفقة", "👥 المتنافسون", "📋 اللجنة", "📄 تحميل المحاضر"])
 
-    with tabs[0]: # تسجيل صفقة
-        with st.form("f_market"):
+    # تسجيل الصفقة
+    with tabs[0]:
+        with st.form("m_form"):
             c1, c2 = st.columns(2)
             ref = c1.text_input("مرجع الصفقة")
-            p_type = c1.selectbox("النوع", ["Appel d'offres ouvert", "Appel d'offres simplifié"])
+            p_type = c1.selectbox("نوع المسطرة", ["Appel d'offres ouvert", "Appel d'offres ouvert national", "Appel d'offres simplifié"])
             obj = c1.text_area("الموضوع")
-            amt = c2.number_input("التقدير الإجمالي", min_value=0.0)
+            amt = c2.number_input("التقدير المالي", min_value=0.0)
             j1, j2, port = c2.date_input("ج1"), c2.date_input("ج2"), c2.date_input("البوابة")
-            if st.form_submit_button("حفظ الصفقة"):
-                conn = get_conn(); conn.execute("INSERT INTO market_master_data (market_ref, market_object, procedure_type, estimate_amount, date_journal_1, date_journal_2, date_portail, created_at) VALUES (?,?,?,?,?,?,?,?)", (ref, obj, p_type, amt, str(j1), str(j2), str(port), str(date.today()))); conn.commit(); conn.close()
-                st.success("تم الحفظ!"); st.rerun()
+            if st.form_submit_button("حفظ"):
+                conn = get_conn()
+                conn.execute("INSERT INTO markets (market_ref, market_object, procedure_type, estimate_amount, date_j1, date_j2, date_portail, created_at) VALUES (?,?,?,?,?,?,?,?)", (ref, obj, p_type, amt, str(j1), str(j2), str(port), str(date.today())))
+                conn.commit(); conn.close(); st.success("تم الحفظ!"); st.rerun()
 
-    with tabs[1]: # الحصص
-        st.subheader("إضافة حصص الصفقة")
-        all_refs = [r['market_ref'] for r in get_conn().execute("SELECT market_ref FROM market_master_data").fetchall()]
-        if all_refs:
-            sel_ref = st.selectbox("اختر الصفقة:", all_refs, key="lot_sel")
-            with st.form("f_lot"):
-                l_num = st.number_input("رقم الحصة", min_value=1)
-                l_tit = st.text_input("عنوان الحصة")
-                l_est = st.number_input("تقدير الحصة", min_value=0.0)
-                if st.form_submit_button("إضافة الحصة"):
-                    conn = get_conn(); conn.execute("INSERT INTO market_lots (market_ref, lot_number, lot_title, lot_estimate) VALUES (?,?,?,?)", (sel_ref, l_num, l_tit, l_est)); conn.commit(); conn.close()
-                    st.success(f"تمت إضافة الحصة {l_num}")
+    # المتنافسون
+    with tabs[1]:
+        all_m = [r['market_ref'] for r in get_conn().execute("SELECT market_ref FROM markets").fetchall()]
+        if all_m:
+            s_m = st.selectbox("اختر الصفقة:", all_m, key="comp_s")
+            with st.form("c_form"):
+                n, o = st.text_input("الشركة"), st.number_input("المبلغ", min_value=0.0)
+                s = st.selectbox("الحالة", ["Admis", "Écarté"])
+                if st.form_submit_button("إضافة"):
+                    conn = get_conn(); conn.execute("INSERT INTO competitors (market_ref, company_name, offer_amount, status) VALUES (?,?,?,?)", (s_m, n, o, s)); conn.commit(); conn.close(); st.success("تمت الإضافة")
         else: st.info("سجل صفقة أولاً")
 
-    with tabs[2]: # المتنافسون
-        st.subheader("إضافة المتنافسين حسب الحصة")
-        if all_refs:
-            ref_c = st.selectbox("اختر الصفقة:", all_refs, key="c_ref_sel")
-            lots = get_conn().execute("SELECT * FROM market_lots WHERE market_ref = ?", (ref_c,)).fetchall()
-            if lots:
-                sel_lot = st.selectbox("اختر الحصة:", [f"Lot {l['lot_number']}: {l['lot_title']}" for l in lots])
-                lot_id = [l['id'] for l in lots if f"Lot {l['lot_number']}: {l['lot_title']}" == sel_lot][0]
-                with st.form("f_comp"):
-                    name = st.text_input("اسم الشركة")
-                    offer = st.number_input("المبلغ", min_value=0.0)
-                    stat = st.selectbox("القرار", ["Admis", "Écarté"])
-                    if st.form_submit_button("إضافة"):
-                        conn = get_conn(); conn.execute("INSERT INTO competitors (market_ref, lot_id, company_name, offer_amount, status) VALUES (?,?,?,?,?)", (ref_c, lot_id, name, offer, stat)); conn.commit(); conn.close()
-                        st.success("تمت الإضافة")
-            else: st.warning("أضف حصصاً لهذه الصفقة أولاً")
+    # اللجنة (الجديد)
+    with tabs[2]:
+        if all_m:
+            s_m_l = st.selectbox("اختر الصفقة لتحديد لجنتها:", all_m, key="comm_s")
+            with st.form("l_form"):
+                m_n = st.text_input("اسم العضو")
+                m_r = st.selectbox("الصفة", ["الرئيس", "عضو", "ممثل الخازن"])
+                if st.form_submit_button("إضافة عضو"):
+                    conn = get_conn(); conn.execute("INSERT INTO commission (market_ref, member_name, member_role) VALUES (?,?,?)", (s_m_l, m_n, m_r)); conn.commit(); conn.close(); st.success("تمت إضافة العضو")
+        else: st.info("سجل صفقة أولاً")
 
-    with tabs[3]: # التحميل
-        markets = get_conn().execute("SELECT * FROM market_master_data").fetchall()
+    # التحميل
+    with tabs[3]:
+        markets = get_conn().execute("SELECT * FROM markets").fetchall()
         if markets:
-            target = st.selectbox("اختر الصفقة للتحميل:", [m['market_ref'] for m in markets], key="final_sel")
-            m_data = next(dict(m) for m in markets if m['market_ref'] == target)
+            t_ref = st.selectbox("اختر الصفقة للتحميل:", [r['market_ref'] for r in markets])
+            m_data = next(dict(r) for r in markets if r['market_ref'] == t_ref)
+            st.divider()
             c1, c2, c3 = st.columns(3)
-            for i, (k, l) in enumerate([("PV1", "PV1"), ("PV2", "PV2"), ("PV3", "PV3"), ("Rapport", "RAPPORT"), ("OS", "OS")]):
+            for i, (k, l) in enumerate([("PV1", "PV1"), ("PV2", "PV2"), ("PV3", "PV3"), ("Rapport", "Rapport"), ("OS", "OS"), ("Notif", "Notification")]):
                 col = [c1, c2, c3][i % 3]
-                if col.button(f"تجهيز {l}"):
-                    col.download_button(f"📥 تحميل {l}", generate_docx(l, m_data), f"{l}_{target}.docx")
+                if col.button(f"إنشاء {l}", key=f"b_{k}"):
+                    data = generate_docx(l, m_data)
+                    col.download_button(f"📥 تحميل {l}", data, f"{l}_{t_ref}.docx", key=f"d_{k}")
