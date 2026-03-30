@@ -333,9 +333,9 @@ def render_minute_text(tender, minute):
     decision_text = minute["decision_text"] or ""
     phase = minute["phase"] or ""
 
-    header = "المملكة المغربية
+    header = """المملكة المغربية
 الجماعة ................................
-"
+"""
 
     if minute_type == "محضر فتح الأظرفة":
         return f"""{header}
