@@ -333,209 +333,287 @@ def render_minute_text(tender, minute):
     decision_text = minute["decision_text"] or ""
     phase = minute["phase"] or ""
 
-    header = """المملكة المغربية
-الجماعة ................................
+    header = """ROYAUME DU MAROC
+MINISTERE DE L’INTERIEUR
+PROVINCE DE TAROUDANT
+CERCLE TALIOUINE
+CAIDAT ASKAOUEN
+COMMUNE ASKAOUEN
 """
 
     if minute_type == "محضر فتح الأظرفة":
         return f"""{header}
-محضر فتح الأظرفة
 
-في يوم {minute_date} وعلى الساعة ..........، بمقر {lieu or 'الجماعة'}، اجتمعت {commission or 'لجنة فتح الأظرفة'} من أجل فتح الأظرفة المتعلقة بالصفقة/الاستشارة ذات المرجع {reference}، المتعلقة بـ: {objet}.
+PROCES VERBAL D'APPEL D'OFFRES OUVERT NATIONAL
+1ère séance
+SUR OFFRE DE PRIX N° : {reference}
 
-صاحب المشروع: {maitre_ouvrage}
-المصلحة المعنية: {service}
-نوع الصفقة: {type_marche}
+Le {minute_date}, à {lieu}, une commission d’appel d’offres, conformément à la décision de l’ordonnateur, est composée comme suit :
+{commission}
 
-افتتحت الجلسة بحضور الأعضاء والمتنافسين أو من يمثلهم، كما يلي:
+S’est réunie en séance publique en vue de procéder à l’ouverture des plis concernant l’appel d’offres ouvert sur offre de prix N° : {reference}, relatif à : {objet}.
+
+Le président rappelle les références de publication, les modalités de publicité ainsi que la liste des concurrents ayant déposé ou transmis leurs plis :
 {participants}
 
-بعد التأكد من سلامة الأظرفة والتصريحات المتعلقة بها، تم الشروع في فتحها وفحص الوثائق المدرجة بها وفق المسطرة المعمول بها.
+Le président s’assure de la présence des membres dont la présence est obligatoire.
+Le président remet le support écrit contenant l’estimation des coûts détaillés des prestations.
+Les membres de la commission paraphent le support de l’estimation.
+Le président invite ensuite les membres à formuler, le cas échéant, leurs réserves ou observations sur les vices éventuels susceptibles d’entacher la procédure.
 
-ملاحظات اللجنة:
+Observations consignées :
 {observations}
 
-وبعد الانتهاء من عملية فتح الأظرفة، خلصت اللجنة إلى ما يلي:
+Le président ouvre les enveloppes contenant les dossiers des concurrents, cite dans chacun d’eux la présence des enveloppes exigées, puis ouvre l’enveloppe portant la mention dossier administratif et énonce les pièces contenues dans chaque dossier administratif et technique.
+
+Cette formalité accomplie, la séance publique est suspendue, les concurrents et le public se retirent de la salle, et la commission se réunit à huis clos pour examiner les dossiers administratifs et techniques.
+
+Résultats et décisions de la commission :
 {decision_text}
 
-وحرر هذا المحضر للإدلاء به عند الاقتضاء.
+La séance publique est ensuite reprise. Le président donne lecture de la liste des soumissionnaires admissibles et suspend la séance en vue de la transmission des dossiers admissibles à la sous-commission technique compétente.
+
+Fait à {lieu}, le {minute_date}
+
+LE PRESIDENT
+LES MEMBRES
 """
 
     if minute_type == "لائحة المتنافسين":
         return f"""{header}
-لائحة المتنافسين
 
-تتعلق هذه اللائحة بالصفقة/الاستشارة ذات المرجع {reference}، موضوعها: {objet}.
-تاريخ الجلسة: {minute_date}
-مكان الجلسة: {lieu}
+LISTE DES CONCURRENTS
 
-لائحة المتنافسين المشاركين أو الحاضرين:
+Appel d’offres ouvert sur offre de prix N° : {reference}
+Objet : {objet}
+Date : {minute_date}
+Lieu : {lieu}
+
+La présente liste récapitule les concurrents ayant déposé ou transmis leurs plis dans le cadre de la procédure précitée :
 {participants}
 
-ملاحظات إضافية:
+Observations :
 {observations}
 
-حررت هذه اللائحة قصد إرفاقها بملف الصفقة.
+La présente liste est établie pour être jointe au dossier de l’appel d’offres.
 """
 
     if minute_type in ["محضر فحص الملف الإداري", "محضر الفحص الإداري"]:
         return f"""{header}
-محضر فحص الملف الإداري
 
-اجتمعت {commission or 'اللجنة المختصة'} بتاريخ {minute_date} بمقر {lieu or 'الجماعة'} لدراسة الملفات الإدارية المتعلقة بالصفقة/الاستشارة رقم {reference}، موضوعها: {objet}.
+PROCES VERBAL D’EXAMEN DU DOSSIER ADMINISTRATIF
 
-بعد استعراض الوثائق المدلى بها من طرف المتنافسين الآتية أسماؤهم:
+Appel d’offres ouvert sur offre de prix N° : {reference}
+Objet : {objet}
+
+Le {minute_date}, la commission compétente, composée comme suit :
+{commission}
+
+s’est réunie à {lieu} afin de procéder à l’examen des dossiers administratifs des concurrents ci-après :
 {participants}
 
-قامت اللجنة بفحص الملفات الإدارية والتأكد من الوثائق المطلوبة ومدى مطابقتها.
-
-نتائج الفحص والملاحظات:
+Après vérification des pièces produites au regard des exigences du règlement de consultation, la commission a relevé les observations suivantes :
 {observations}
 
-قرار اللجنة:
+En conséquence, la commission arrête la décision suivante :
 {decision_text}
 
-حرر هذا المحضر قصد اعتماده ضمن وثائق الصفقة.
+Le présent procès-verbal est établi pour servir et valoir ce que de droit.
 """
 
     if minute_type == "محضر طلب استكمال الوثائق":
         return f"""{header}
-محضر طلب استكمال الوثائق
 
-بتاريخ {minute_date} اجتمعت {commission or 'اللجنة المختصة'} بمقر {lieu or 'الجماعة'} بخصوص الصفقة/الاستشارة رقم {reference} المتعلقة بـ: {objet}.
+PROCES VERBAL DE DEMANDE DE COMPLEMENT DU DOSSIER ADMINISTRATIF
 
-بعد دراسة الملفات المدلى بها من طرف المتنافسين التالي ذكرهم:
+Appel d’offres ouvert sur offre de prix N° : {reference}
+Objet : {objet}
+
+Le {minute_date}, la commission compétente s’est réunie à {lieu} pour examiner la situation administrative du concurrent concerné dans le cadre de la procédure susvisée.
+
+Concurrents concernés :
 {participants}
 
-تبين للجنة وجود نواقص أو وثائق تحتاج إلى استكمال أو توضيح كما يلي:
+Après examen, la commission a constaté les insuffisances ou pièces complémentaires suivantes :
 {observations}
 
-وعليه تقرر مطالبة المعنيين بالأمر باستكمال الوثائق أو تقديم التوضيحات اللازمة داخل الآجال المحددة.
+En conséquence, il est décidé d’inviter le concurrent concerné à produire les compléments requis dans le délai réglementaire.
 
-تفاصيل القرار:
+Décision détaillée :
 {decision_text}
 
-حرر هذا المحضر للإدلاء به عند الحاجة.
+Le présent procès-verbal est établi pour servir et valoir ce que de droit.
 """
 
     if minute_type in ["محضر الإقصاء الإداري", "محضر قبول أو إقصاء المتنافسين", "محضر الإقصاء التقني"]:
         return f"""{header}
-{minute_type}
 
-بتاريخ {minute_date} اجتمعت {commission or 'اللجنة المختصة'} بمقر {lieu or 'الجماعة'} لدراسة وضعية المتنافسين في إطار الصفقة/الاستشارة رقم {reference}، موضوعها: {objet}.
+{minute_type.upper()}
 
-المتنافسون المعنيون:
+Appel d’offres ouvert sur offre de prix N° : {reference}
+Objet : {objet}
+
+Le {minute_date}, la commission compétente, réunie à {lieu}, a examiné la situation des concurrents suivants :
 {participants}
 
-الأسباب والملاحظات المعتمدة من طرف اللجنة:
+Après examen des éléments du dossier, les motifs et observations retenus sont les suivants :
 {observations}
 
-وبناءً عليه قررت اللجنة ما يلي:
+Par conséquent, la commission décide ce qui suit :
 {decision_text}
 
-حرر هذا المحضر لتوثيق قرارات القبول أو الإقصاء.
+Le présent procès-verbal est établi pour servir et valoir ce que de droit.
 """
 
     if minute_type in ["محضر فحص الملف التقني", "محضر التقييم التقني", "محضر القبول التقني"]:
         return f"""{header}
-{minute_type}
 
-في يوم {minute_date} اجتمعت {commission or 'اللجنة التقنية'} بمقر {lieu or 'الجماعة'} لدراسة الملفات التقنية المتعلقة بالصفقة/الاستشارة رقم {reference} الخاصة بـ: {objet}.
+RAPPORT DE LA SOUS-COMMISSION TECHNIQUE
 
-لائحة المتنافسين المعنيين:
+Appel d’offres ouvert national {reference}
+Objet : {objet}
+EXAMEN DES OFFRES TECHNIQUES
+
+Le {minute_date}, faisant suite à la séance d’ouverture des plis et à la décision du président de la commission d’ouverture des plis de désigner une sous-commission technique, conformément aux dispositions réglementaires applicables, la sous-commission technique s’est réunie à {lieu} pour examiner et analyser les offres techniques produites par les concurrents admis après étude des dossiers administratifs.
+
+Composition de la sous-commission technique :
+{commission}
+
+Liste des concurrents soumis à l’examen technique :
 {participants}
 
-بعد فحص العروض التقنية ومقارنتها بالمتطلبات التقنية المنصوص عليها، سجلت اللجنة الملاحظات التالية:
+Constatations et observations :
 {observations}
 
-واستقرت اللجنة على القرار التالي:
+Conclusion de la sous-commission :
 {decision_text}
 
-حرر هذا المحضر للإدلاء به عند الاقتضاء.
+Le présent rapport est établi pour être joint au dossier de l’appel d’offres.
 """
 
     if minute_type in ["محضر فتح العروض المالية", "محضر تقييم العروض المالية", "محضر ترتيب المتنافسين"]:
         return f"""{header}
-{minute_type}
 
-اجتمعت {commission or 'اللجنة المختصة'} بتاريخ {minute_date} بمقر {lieu or 'الجماعة'} بخصوص الصفقة/الاستشارة رقم {reference}، موضوعها: {objet}.
+PROCES VERBAL D'APPEL D'OFFRES OUVERT NATIONAL
+2ème Séance Publique
+SUR OFFRE DE PRIX N° : {reference}
 
-وقد تمت دراسة العروض المالية المقدمة من طرف المتنافسين التالية أسماؤهم:
+Le {minute_date}, la commission d’appel d’offres, composée comme suit :
+{commission}
+
+s’est réunie à {lieu} pour examiner le rapport de la sous-commission technique et procéder à l’ouverture des offres financières des concurrents déclarés admissibles dans le cadre de l’appel d’offres relatif à : {objet}.
+
+Concurrents admissibles et éléments soumis à lecture :
 {participants}
 
-ملخص الدراسة والمقارنة:
+La commission procède à la lecture des notes techniques, à l’ouverture des enveloppes financières, à la vérification des opérations arithmétiques et, le cas échéant, à la rectification des erreurs de calcul relevées.
+
+Observations, calcul du prix de référence et classement :
 {observations}
 
-وبعد المداولة تقرر ما يلي:
+Après délibération, la commission arrête la décision suivante :
 {decision_text}
 
-حرر هذا المحضر قصد اعتماده ضمن ملف الصفقة.
+Le président suspend, le cas échéant, la séance en vue de la production du complément du dossier administratif ou de la reprise des travaux à la date fixée.
+
+Le présent procès-verbal est établi pour servir et valoir ce que de droit.
 """
 
     if minute_type in ["محضر اقتراح الإسناد", "قرار الإسناد"]:
         return f"""{header}
-{minute_type}
 
-اجتمعت {commission or 'اللجنة المختصة'} بتاريخ {minute_date} بمقر {lieu or 'الجماعة'} لدراسة النتائج النهائية المتعلقة بالصفقة/الاستشارة رقم {reference}، موضوعها: {objet}.
+{minute_type.upper()}
 
-وبعد استعراض مختلف مراحل الدراسة والتقييم، وتبعا للمعطيات التالية:
+Appel d’offres ouvert sur offre de prix N° : {reference}
+Objet : {objet}
+
+Le {minute_date}, la commission compétente, réunie à {lieu}, après examen de l’ensemble des résultats des différentes phases de la procédure, a constaté ce qui suit :
 {observations}
 
-فإن اللجنة تقترح/تقرر إسناد الصفقة إلى:
+Au vu des éléments examinés, il est décidé / proposé ce qui suit :
 {decision_text}
 
-المتدخلون أو المتنافسون المعنيون:
+Concurrents concernés :
 {participants}
 
-حرر هذا المحضر لاتخاذ المتعين قانونًا وإداريًا.
+Le présent acte est établi pour servir et valoir ce que de droit.
 """
 
     if minute_type == "تقرير تقديم الصفقة":
         return f"""{header}
-تقرير تقديم الصفقة
 
-يتعلق هذا التقرير بالصفقة/الاستشارة رقم {reference}، موضوعها: {objet}.
+RAPPORT DE PRESENTATION
 
-صاحب المشروع: {maitre_ouvrage}
-المصلحة المعنية: {service}
-نوع الصفقة: {type_marche}
-تاريخ التحرير: {minute_date}
+Le présent rapport concerne l’appel d’offres / la consultation N° : {reference}
+Objet : {objet}
+Maître d’ouvrage : {maitre_ouvrage}
+Service concerné : {service}
+Type de marché : {type_marche}
+Date : {minute_date}
 
-تقديم عام:
+Présentation générale de l’opération :
 {observations}
 
-المعطيات الأساسية والنتائج:
+Résultats de la procédure et suite proposée :
 {decision_text}
 
-المتدخلون أو المتنافسون:
+Concurrents ou intervenants concernés :
 {participants}
 
-وحرر هذا التقرير لتقديم خلاصات المسطرة المعتمدة بخصوص هذه الصفقة.
+Le présent rapport est établi pour être versé au dossier correspondant.
+"""
+
+    if minute_type == "PV 3ème séance publique":
+        return f"""{header}
+
+PROCES VERBAL D'APPEL D'OFFRES OUVERT NATIONAL
+3ème Séance Publique
+SUR OFFRE DE PRIX N° : {reference}
+
+Le {minute_date}, la commission d’appel d’offres, composée comme suit :
+{commission}
+
+s’est réunie en séance publique à {lieu}, en vue de procéder à l’ouverture et à l’examen des pièces complémentaires du dossier administratif du concurrent concerné dans le cadre de l’appel d’offres relatif à : {objet}.
+
+Concurrents concernés :
+{participants}
+
+La commission s’assure du support ayant servi de moyen d’invitation, vérifie les pièces et la réponse reçue, puis examine les compléments produits.
+
+Observations :
+{observations}
+
+Après examen, la commission décide ce qui suit :
+{decision_text}
+
+Le présent procès-verbal est établi pour servir et valoir ce que de droit.
 """
 
     return f"""{header}
+
 {minute_type}
 
-مرجع الصفقة / الاستشارة: {reference}
-موضوع الصفقة: {objet}
-المصلحة المعنية: {service}
-صاحب المشروع: {maitre_ouvrage}
-نوع الصفقة: {type_marche}
-المرحلة: {phase}
-التاريخ: {minute_date}
-المكان: {lieu}
-اللجنة: {commission}
+Référence : {reference}
+Objet : {objet}
+Service concerné : {service}
+Maître d’ouvrage : {maitre_ouvrage}
+Type de marché : {type_marche}
+Phase : {phase}
+Date : {minute_date}
+Lieu : {lieu}
+Commission :
+{commission}
 
-المشاركون / المتنافسون:
+Participants / Concurrents :
 {participants}
 
-الملاحظات:
+Observations :
 {observations}
 
-القرار / النتيجة:
+Décision / Résultat :
 {decision_text}
 
-حرر هذا المحضر للإدلاء به عند الحاجة.
+Le présent document est établi pour servir et valoir ce que de droit.
 """
 
 
