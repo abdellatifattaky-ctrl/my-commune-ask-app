@@ -1,18 +1,17 @@
 import streamlit as st
 import sqlite3
 import io
-import pandas as pd
-from datetime import datetime, date
+from datetime import date
 from docx import Document
 from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-# --- إعدادات الصفحة ---
+# --- 1. إعدادات الصفحة ---
 st.set_page_config(page_title="SMART PRO+ ASKAOUEN", layout="wide")
 
-# --- قاعدة البيانات ---
+# --- 2. إدارة قاعدة البيانات ---
 def get_conn():
-    conn = sqlite3.connect("procurement_final_v10.db")
+    conn = sqlite3.connect("askaouen_markets.db")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -22,124 +21,156 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS markets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         market_ref TEXT UNIQUE, market_object TEXT, procedure_type TEXT,
-        estimate_amount REAL, open_date TEXT, status TEXT)""")
+        estimate_amount REAL, date_j1 TEXT, date_j2 TEXT,
+        date_portail TEXT, created_at TEXT)""")
+    
     c.execute("""CREATE TABLE IF NOT EXISTS competitors (
         id INTEGER PRIMARY KEY AUTOINCREMENT, market_ref TEXT,
         company_name TEXT, offer_amount REAL, status TEXT)""")
-    conn.commit(); conn.close()
+    
+    c.execute("""CREATE TABLE IF NOT EXISTS commission (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, market_ref TEXT,
+        member_name TEXT, member_role TEXT)""")
+    conn.commit()
+    conn.close()
 
-# --- محرك دمج النصوص الحرفية من القوالب المرفوعة ---
-def generate_official_doc(doc_type, m, comps):
+# --- 3. الدالة الجوهرية: توليد الوثيقة بناءً على قوالبك المرفوعة ---
+def generate_from_template(doc_type, m):
     doc = Document()
     
-    # الإعدادات العامة للهوامش والخط
+    # ضبط الهوامش (Margins) لتكون مطابقة للوثائق الإدارية
     section = doc.sections[0]
+    section.top_margin = Cm(1.2)
     section.left_margin = Cm(2)
+    section.right_margin = Cm(2)
+
+    # --- الترويسة (Header) كما في قوالبك ---
+    header_table = doc.add_table(rows=1, cols=2)
+    header_table.width = Cm(17)
     
-    # 1. الترويسة الرسمية (ثابتة في كل ملفاتك)
-    header = doc.add_paragraph()
-    header.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    header.add_run("ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nPROVINCE DE TAROUDANT\nCERCLE TALIOUINE\nCAIDAT ASKAOUEN\nCOMMUNE ASKAOUEN").bold = True
+    # الجهة اليسرى (الفرنسية)
+    left_cell = header_table.rows[0].cells[0].paragraphs[0]
+    left_cell.add_run("ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nPROVINCE DE TAROUDANT\nCERCLE DE TALIOUINE\nCOMMUNE ASKAOUEN").bold = True
+    left_cell.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
-    # --- دمج قالب المحضر الأول (حرفياً من 1er_PV.docx) ---
-    if doc_type == "PV1":
-        title = doc.add_paragraph("\nPROCES VERBAL D'APPEL D'OFFRES OUVERT\nSUR OFFRE DE PRIX N: " + m['market_ref'])
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        title.runs[0].bold = True
-        
-        doc.add_paragraph(f"Le {m['open_date']} à 10h, une commission d'appel d'offres... est composée comme suit :")
-        doc.add_paragraph("ZILALI MOHAMED : PRESIDENT DE LA C/T ASKAOUEN --- PRESIDENT")
-        doc.add_paragraph("BAK MOBAREK : DIRECTEUR DES SERVICES --- MEMBRE")
-        doc.add_paragraph("ABDELLATIF ATTAKAY : TECHNICIEN A LA COMMUNE --- MEMBRE")
-        
-        doc.add_paragraph(f"\nObjet: {m['market_object']}")
-        doc.add_paragraph(f"Estimation: {m['estimate_amount']} DHS TTC")
+    # الجهة اليمنى (العربية) - إذا أردت إضافتها لاحقاً
+    right_cell = header_table.rows[0].cells[1].paragraphs[0]
+    right_cell.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-    # --- دمج قالب المحضر الثاني (حرفياً من 2eme_pv.docx) ---
-    elif doc_type == "PV2":
-        doc.add_paragraph("\nPROCES VERBAL D'APPEL D'OFFRES OUVERT\n2eme Séance Publique").alignment = WD_ALIGN_PARAGRAPH.CENTER
-        doc.add_paragraph(f"Conformément à la décision... la commission d'appel d'offres N: {m['market_ref']}")
-        doc.add_paragraph("\nOuverture des enveloppes des concurrents admissibles portant la mention 'offres financières' :")
-        
-        table = doc.add_table(rows=1, cols=2); table.style = 'Table Grid'
-        table.rows[0].cells[0].text = "Concurrent"; table.rows[0].cells[1].text = "Montant"
-        for c in comps:
-            row = table.add_row().cells
-            row[0].text, row[1].text = c['company_name'], f"{c['offer_amount']}"
+    doc.add_paragraph("\n")
 
-    # --- دمج قالب التبليغ (حرفياً من os_noitificatin.docx) ---
-    elif doc_type == "OS_NOTIF":
-        doc.add_paragraph("\nORDRE DE SERVICE DE LA NOTIFICATION\nDE L’APPROBATION DU MARCHE N: " + m['market_ref']).alignment = WD_ALIGN_PARAGRAPH.CENTER
-        doc.add_paragraph(f"Le maître d’ouvrage représenté par Mr ZILALI MOHAMED en qualités du président...")
-        doc.add_paragraph(f"Informe l'entreprise que le marché ayant pour objet: {m['market_object']} est approuvé.")
+    # --- العنوان المركزي (مطابق للقالب) ---
+    title_p = doc.add_paragraph()
+    title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # نستخدم نفس الصياغة الموجودة في صورك
+    title_run = title_p.add_run(f"{doc_type}\n{m['procedure_type'].upper()} N° : {m['market_ref']}")
+    title_run.bold = True
+    title_run.font.size = Pt(16)
+    title_run.underline = True
 
-    # --- دمج قالب بداية الأشغال (حرفياً من os_commencement.docx) ---
-    elif doc_type == "OS_START":
-        doc.add_paragraph("\nORDRE DE SERVICE A L’ENTREPRENEUR POUR\nCOMMENCEMENT DES TRAVAUX").alignment = WD_ALIGN_PARAGRAPH.CENTER
-        doc.add_paragraph(f"Marché N°: {m['market_ref']}")
-        doc.add_paragraph(f"Objet: {m['market_object']}")
-        doc.add_paragraph("\nPar conséquent, l'intéressé est invité à commencer les travaux objet du présent marché à compter du: ..........")
+    doc.add_paragraph("\n")
 
-    # --- التوقيعات (حرفياً كما في الصور والملفات) ---
-    doc.add_paragraph("\n\nFait à Askaouen, le " + str(date.today()))
-    sig = doc.add_table(rows=2, cols=3)
-    sig.rows[0].cells[0].text = "Le Président"
-    sig.rows[0].cells[1].text = "Le Directeur"
-    sig.rows[0].cells[2].text = "Le Technicien"
-    sig.rows[1].cells[0].text = "MOHAMED ZILALI"
-    sig.rows[1].cells[1].text = "M BAREK BAK"
-    sig.rows[1].cells[2].text = "ABDELLATIF ATTAKY"
+    # --- متن المحضر (احترام الحقول) ---
+    doc.add_paragraph(f"OBJET : {m['market_object']}").bold = True
+    
+    # المراجع القانونية (نفس التي في قوالبك)
+    legal = doc.add_paragraph()
+    legal.add_run("Vu le décret n° 2-22-431 du 15 chaabane 1444 (8 mars 2023) relatif aux marchés publics.").italic = True
+    
+    doc.add_paragraph(f"ESTIMATION DU MAITRE D'OUVRAGE : {m['estimate_amount']} DHS TTC")
+
+    # --- جدول المتنافسين (في حال كان PV2 أو PV3) ---
+    if doc_type in ["PV2", "PV3", "Rapport"]:
+        doc.add_paragraph("\nLISTE DES CONCURRENTS :").bold = True
+        conn = get_conn()
+        comps = conn.execute("SELECT * FROM competitors WHERE market_ref = ?", (m['market_ref'],)).fetchall()
+        if comps:
+            table = doc.add_table(rows=1, cols=3)
+            table.style = 'Table Grid'
+            hdr = table.rows[0].cells
+            hdr[0].text, hdr[1].text, hdr[2].text = "CONCURRENT", "MONTANT", "DECISION"
+            for c in comps:
+                row = table.add_row().cells
+                row[0].text, row[1].text, row[2].text = c['company_name'], f"{c['offer_amount']} DHS", c['status']
+
+    # --- التوقيعات في الأسفل (اللجنة المتغيرة) ---
+    doc.add_paragraph("\n\nMEMBRES DE LA COMMISSION :").bold = True
+    conn = get_conn()
+    members = conn.execute("SELECT * FROM commission WHERE market_ref = ?", (m['market_ref'],)).fetchall()
+    conn.close()
+    
+    if members:
+        sig_table = doc.add_table(rows=0, cols=2)
+        for mem in members:
+            row = sig_table.add_row().cells
+            row[0].text = mem['member_name']
+            row[1].text = f"({mem['member_role']})"
+    else:
+        # إذا لم يتم إدخال لجنة، نضع أسطر فارغة للتوقيع اليدوي
+        doc.add_paragraph("1. ........................................\n2. ........................................")
+
+    doc.add_paragraph(f"\nFait à Askaouen, le {date.today().strftime('%d/%m/%Y')}")
 
     bio = io.BytesIO()
     doc.save(bio)
     return bio.getvalue()
 
-# --- الواجهة ---
+# --- 4. واجهة المستخدم (التطبيق) ---
 init_db()
-st.sidebar.title("SMART PRO+ ASKAOUEN")
-menu = st.sidebar.selectbox("القائمة", ["إدارة الصفقات", "لوحة التحكم"])
+st.sidebar.title("SMART PRO+ V.Final")
+menu = st.sidebar.radio("القائمة", ["إدارة الصفقات"])
 
 if menu == "إدارة الصفقات":
-    t1, t2, t3 = st.tabs(["تسجيل الصفقة", "المتنافسون", "تحميل القوالب الرسمية"])
-    
-    with t1:
-        with st.form("m_f"):
-            ref = st.text_input("مرجع الصفقة (N° AO)")
-            obj = st.text_area("الموضوع")
-            amt = st.number_input("التقدير المالي", min_value=0.0)
-            d_o = st.date_input("تاريخ فتح الأظرفة")
-            if st.form_submit_button("حفظ"):
-                conn = get_conn(); conn.execute("INSERT INTO markets (market_ref, market_object, estimate_amount, open_date) VALUES (?,?,?,?)", (ref, obj, amt, str(d_o))); conn.commit(); conn.close(); st.success("تم الحفظ")
+    st.markdown('<h2 style="text-align: center;">نظام جماعة أسكاون لتدبير الصفقات</h2>', unsafe_allow_html=True)
+    tabs = st.tabs(["📝 تسجيل الصفقة", "🏢 المتنافسون", "👥 اللجنة", "📥 تحميل المحاضر"])
 
-    with t2:
-        all_m = [r['market_ref'] for r in get_conn().execute("SELECT market_ref FROM markets").fetchall()]
-        if all_m:
-            s_m = st.selectbox("اختر الصفقة:", all_m)
-            with st.form("c_f"):
-                c_n = st.text_input("اسم الشركة")
-                c_o = st.number_input("المبلغ", min_value=0.0)
-                if st.form_submit_button("إضافة"):
-                    conn = get_conn(); conn.execute("INSERT INTO competitors (market_ref, company_name, offer_amount) VALUES (?,?,?)", (s_m, c_n, c_o)); conn.commit(); conn.close(); st.success("تمت الإضافة")
-
-    with t3:
-        markets = get_conn().execute("SELECT * FROM markets").fetchall()
-        if markets:
-            sel_m = st.selectbox("الصفقة المراد تحميل ملفاتها:", [r['market_ref'] for r in markets])
-            m_data = next(dict(r) for r in markets if r['market_ref'] == sel_m)
-            comps = get_conn().execute("SELECT * FROM competitors WHERE market_ref=?", (sel_m,)).fetchall()
-            
-            st.info("اختر القالب الرسمي لتحميله بنصوصه الحرفية:")
+    # تسجيل الصفقة
+    with tabs[0]:
+        with st.form("main_form"):
             c1, c2 = st.columns(2)
-            
-            # الربط المباشر مع النصوص المستخرجة من ملفاتك
-            docs_info = [
-                ("PV1", "المحضر الأول (1er PV)", c1),
-                ("PV2", "المحضر الثاني (2eme PV)", c1),
-                ("OS_NOTIF", "تبليغ المصادقة (OS Notif)", c2),
-                ("OS_START", "بداية الأشغال (OS Start)", c2)
-            ]
-            
-            for key, label, col in docs_info:
-                if col.button(f"تجهيز {label}"):
-                    file_data = generate_official_doc(key, m_data, comps)
-                    col.download_button(f"📥 تحميل {label}", file_data, f"{label}_{sel_m}.docx")
+            ref = c1.text_input("N° AO (المرجع)")
+            p_type = c1.selectbox("Type Procédure", ["Appel d'offres ouvert", "Appel d'offres ouvert national", "Appel d'offres simplifié"])
+            obj = c1.text_area("Objet (الموضوع)")
+            amt = c2.number_input("Estimation (التقدير المالي)", min_value=0.0)
+            j1, j2, port = c2.date_input("Journal 1"), c2.date_input("Journal 2"), c2.date_input("Portail")
+            if st.form_submit_button("حفظ الصفقة"):
+                conn = get_conn()
+                conn.execute("INSERT INTO markets (market_ref, market_object, procedure_type, estimate_amount, date_j1, date_j2, date_portail, created_at) VALUES (?,?,?,?,?,?,?,?)", (ref, obj, p_type, amt, str(j1), str(j2), str(port), str(date.today())))
+                conn.commit(); conn.close(); st.success("تم الحفظ بنجاح!"); st.rerun()
+
+    # المتنافسون
+    with tabs[1]:
+        all_refs = [r['market_ref'] for r in get_conn().execute("SELECT market_ref FROM markets").fetchall()]
+        if all_refs:
+            sel = st.selectbox("اختر الصفقة:", all_refs, key="c_sel")
+            with st.form("comp_form"):
+                n, o = st.text_input("اسم المتنافس"), st.number_input("المبلغ", min_value=0.0)
+                s = st.selectbox("القرار", ["Admis", "Écarté"])
+                if st.form_submit_button("إضافة"):
+                    conn = get_conn(); conn.execute("INSERT INTO competitors (market_ref, company_name, offer_amount, status) VALUES (?,?,?,?)", (sel, n, o, s)); conn.commit(); conn.close(); st.success("تم")
+
+    # اللجنة
+    with tabs[2]:
+        if all_refs:
+            sel_l = st.selectbox("اختر الصفقة:", all_refs, key="l_sel")
+            with st.form("l_form"):
+                m_n = st.text_input("اسم العضو")
+                m_r = st.selectbox("الصفة", ["Président", "Membre", "Secrétaire"])
+                if st.form_submit_button("إضافة عضو"):
+                    conn = get_conn(); conn.execute("INSERT INTO commission (market_ref, member_name, member_role) VALUES (?,?,?)", (sel_l, m_n, m_r)); conn.commit(); conn.close(); st.success("تم الإضافة")
+
+    # التحميل (أهم جزء)
+    with tabs[3]:
+        rows = get_conn().execute("SELECT * FROM markets").fetchall()
+        if rows:
+            target = st.selectbox("اختر الصفقة:", [r['market_ref'] for r in rows])
+            m_data = next(dict(r) for r in rows if r['market_ref'] == target)
+            st.divider()
+            c1, c2, c3 = st.columns(3)
+            # توليد المحاضر بنفس مسميات قوالبك
+            docs = [("PV1", "PV1"), ("PV2", "PV2"), ("PV3", "PV3"), ("Rapport", "Rapport"), ("OS", "OS")]
+            for i, (k, l) in enumerate(docs):
+                col = [c1, c2, c3][i % 3]
+                if col.button(f"تجهيز {l}"):
+                    file_data = generate_from_template(l, m_data)
+                    col.download_button(f"📥 تحميل {l}", file_data, f"{l}_{target}.docx")
