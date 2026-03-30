@@ -2,113 +2,116 @@ import streamlit as st
 import sqlite3
 import io
 from datetime import date
-from docx import Document
-from docx.shared import Cm, Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-# --- 1. الدوال الأصلية وتعديل قاعدة البيانات ---
+# --- 1. إعدادات الصفحة (يجب أن يكون أول أمر Streamlit على الإطلاق) ---
+st.set_page_config(page_title="SMART PRO+ الصفقات", layout="wide")
 
-def init_procurement_smart_tables():
+# --- 2. دوال قاعدة البيانات (مع التواريخ الجديدة) ---
+def get_conn():
     conn = sqlite3.connect("procurement.db")
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_conn()
     c = conn.cursor()
-    # أضفنا حقول التواريخ الجديدة هنا
-    c.execute("""CREATE TABLE IF NOT EXISTS market_master_data (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        market_ref TEXT, 
-        market_object TEXT, 
-        estimate_amount REAL, 
-        date_journal_1 TEXT,
-        date_journal_2 TEXT,
-        date_portail TEXT,
-        created_at TEXT)""")
+    # إنشاء الجدول مع كافة الحقول المطلوبة (المرجع، الموضوع، المبلغ، وتواريخ النشر)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS market_master_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            market_ref TEXT,
+            market_object TEXT,
+            estimate_amount REAL,
+            date_journal_1 TEXT,
+            date_journal_2 TEXT,
+            date_portail TEXT,
+            created_at TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
 def get_market_refs():
-    conn = sqlite3.connect("procurement.db")
-    rows = conn.execute("SELECT DISTINCT market_ref FROM market_master_data").fetchall()
-    conn.close()
-    return [r[0] for r in rows]
+    try:
+        conn = get_conn()
+        rows = conn.execute("SELECT DISTINCT market_ref FROM market_master_data").fetchall()
+        conn.close()
+        return [r['market_ref'] for r in rows]
+    except:
+        return []
 
-# --- 2. منطق البرنامج والقالب الأصلي ---
+# --- 3. تشغيل التأسيس ---
+init_db()
 
-menu = st.sidebar.selectbox("القائمة", ["الصفقات العمومية"])
+# --- 4. واجهة المستخدم (القالب الأصلي) ---
+st.sidebar.title("القائمة الرئيسية")
+menu = st.sidebar.selectbox("اختر القسم:", ["الصفحة الرئيسية", "الصفقات العمومية"])
 
-if menu == "الصفقات العمومية":
-    st.markdown('<div class="section-title">تدبير الصفقات العمومية SMART PRO+</div>', unsafe_allow_html=True)
-    
-    init_procurement_smart_tables()
+if menu == "الصفحة الرئيسية":
+    st.title("👋 مرحباً بك في نظام تدبير الجماعة")
+    st.info("الرجاء اختيار 'الصفقات العمومية' من القائمة الجانبية.")
+
+elif menu == "الصفقات العمومية":
+    st.markdown('<h2 style="text-align: center; color: #1E3A8A;">تدبير الصفقات العمومية SMART PRO+</h2>', unsafe_allow_html=True)
 
     tabs = st.tabs(["➕ تسجيل صفقة جديدة", "📊 إدارة الصفقات", "📄 توليد المحاضر"])
 
-    # --- التبويب الأول: إدخال البيانات مع تواريخ النشر ---
+    # --- التبويب الأول: إدخال البيانات ---
     with tabs[0]:
         st.subheader("إدخال بيانات الصفقة وتواريخ النشر")
-        with st.form("market_form"):
+        with st.form("market_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
                 m_ref = st.text_input("مرجع الصفقة (N° AO)")
                 m_obj = st.text_area("موضوع الصفقة")
-                m_amount = st.number_input("التقدير المالي", min_value=0.0)
+                m_amount = st.number_input("التقدير المالي (TTC)", min_value=0.0)
             
             with col2:
-                st.write("**📅 تواريخ النشر الإجباري:**")
-                d_j1 = st.date_input("تاريخ النشر بالجريدة 1")
-                d_j2 = st.date_input("تاريخ النشر بالجريدة 2")
-                d_portail = st.date_input("تاريخ النشر بالبوابة (Portail)")
-                m_date_open = st.date_input("تاريخ فتح الأظرفة")
+                st.write("**📅 تواريخ النشر:**")
+                d_j1 = st.date_input("تاريخ النشر بالجريدة 1", value=date.today())
+                d_j2 = st.date_input("تاريخ النشر بالجريدة 2", value=date.today())
+                d_portail = st.date_input("تاريخ النشر بالبوابة", value=date.today())
+                m_open_date = st.date_input("تاريخ فتح الأظرفة", value=date.today())
 
             if st.form_submit_button("حفظ الصفقة"):
-                conn = sqlite3.connect("procurement.db")
-                conn.execute("""INSERT INTO market_master_data 
-                    (market_ref, market_object, estimate_amount, date_journal_1, date_journal_2, date_portail, created_at) 
-                    VALUES (?,?,?,?,?,?,?)""",
-                    (m_ref, m_obj, m_amount, str(d_j1), str(d_j2), str(d_portail), str(m_date_open)))
-                conn.commit()
-                conn.close()
-                st.success(f"✅ تم حفظ الصفقة {m_ref} مع تواريخ النشر")
+                if m_ref and m_obj:
+                    conn = get_conn()
+                    conn.execute("""INSERT INTO market_master_data 
+                        (market_ref, market_object, estimate_amount, date_journal_1, date_journal_2, date_portail, created_at) 
+                        VALUES (?,?,?,?,?,?,?)""",
+                        (m_ref, m_obj, m_amount, str(d_j1), str(d_j2), str(d_portail), str(m_open_date)))
+                    conn.commit()
+                    conn.close()
+                    st.success(f"✅ تم حفظ الصفقة {m_ref} بنجاح!")
+                    st.rerun() # تحديث الصفحة لرؤية البيانات الجديدة
+                else:
+                    st.error("⚠️ يرجى إدخال المرجع والموضوع!")
 
-    # --- التبويب الثالث: توليد المستندات مع إدراج التواريخ ---
-    with tabs[2]:
-        st.subheader("إصدار الوثائق الرسمية (Docx)")
-        all_refs = get_market_refs()
-        
-        if all_refs:
-            target_ref = st.selectbox("اختر الصفقة:", all_refs, key="gen_docs")
-            
-            # جلب البيانات كاملة بما فيها التواريخ
-            conn = sqlite3.connect("procurement.db")
-            conn.row_factory = sqlite3.Row
-            m = conn.execute("SELECT * FROM market_master_data WHERE market_ref = ?", (target_ref,)).fetchone()
-            conn.close()
-
-            if m:
-                col1, col2, col3 = st.columns(3)
-                
-                # مثال لدالة إنشاء مستند PV1 يحتوي على التواريخ
-                if col1.button("📄 إنشاء PV1"):
-                    doc = Document()
-                    # (تنسيق الرأس كما سبق...)
-                    doc.add_heading(f"PROCES VERBAL N° {m['market_ref']}", level=1)
-                    doc.add_paragraph(f"Objet: {m['market_object']}")
-                    
-                    # إدراج تواريخ النشر داخل النص
-                    p = doc.add_paragraph()
-                    p.add_run(f"L'avis d'appel d'offres a été publié dans:\n")
-                    p.add_run(f"- Journal 1 le: {m['date_journal_1']}\n")
-                    p.add_run(f"- Journal 2 le: {m['date_journal_2']}\n")
-                    p.add_run(f"- Portail des Marchés Publics le: {m['date_portail']}")
-                    
-                    bio = io.BytesIO()
-                    doc.save(bio)
-                    st.download_button("📥 تحميل PV1", bio.getvalue(), f"PV1_{target_ref}.docx")
-                
-                # بقية الأزرار (PV2, PV3, Rapport...) تتبع نفس النمط
-                if col1.button("📄 إنشاء PV2"): st.info("جاري التحضير...")
-                if col2.button("📄 إنشاء PV3"): st.info("جاري التحضير...")
-                if col2.button("📝 Rapport"): st.info("جاري التحضير...")
-                if col3.button("🔔 OS"): st.info("جاري التحضير...")
-                if col3.button("📩 OS Notification"): st.info("جاري التحضير...")
-
+    # --- التبويب الثاني: الإدارة ---
+    with tabs[1]:
+        st.subheader("الصفقات المسجلة")
+        conn = get_conn()
+        data = conn.execute("SELECT * FROM market_master_data ORDER BY id DESC").fetchall()
+        conn.close()
+        if data:
+            st.table(data)
         else:
-            st.warning("يجب إضافة صفقة أولاً.")
+            st.info("لا توجد صفقات مسجلة حالياً.")
+
+    # --- التبويب الثالث: توليد المستندات ---
+    with tabs[2]:
+        st.subheader("إصدار الوثائق (Docx)")
+        refs = get_market_refs()
+        if refs:
+            target = st.selectbox("اختر الصفقة:", refs)
+            st.write(f"سيتم إصدار الوثائق لـ: **{target}**")
+            
+            c1, c2, c3 = st.columns(3)
+            buttons = ["PV1", "PV2", "PV3", "Rapport", "OS", "OS Notification"]
+            # هنا ستوضع دوال التحميل لاحقاً
+            for i, btn_name in enumerate(buttons):
+                col = [c1, c2, c3][i % 3]
+                if col.button(f"إنشاء {btn_name}"):
+                    st.toast(f"جاري تحضير {btn_name}...")
+        else:
+            st.warning("يرجى إضافة صفقة أولاً.")
