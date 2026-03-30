@@ -1,112 +1,154 @@
-import sqlite3
-from datetime import date
-from io import BytesIO
-
-import pandas as pd
 import streamlit as st
+import sqlite3
+import io
+from datetime import date
 from docx import Document
+from docx.shared import Cm, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt, Cm
-from num2words import num2words
 
-st.set_page_config(page_title="نظام تدبير مصالح الجماعة", page_icon="🏛️", layout="wide")
+# --- 1. إعدادات التطبيق ---
+st.set_page_config(page_title="SMART PRO+ ASKAOUEN", layout="wide")
 
-st.markdown("""
-<style>
-html, body, [class*="css"]  { direction: rtl; text-align: right; font-family: "Arial", sans-serif; }
-.block-container { padding-top: 1rem; padding-bottom: 1rem; }
-.main-title { background: linear-gradient(135deg, #0f766e, #115e59); color: white; padding: 22px; border-radius: 18px; margin-bottom: 18px; }
-.main-title h1 { margin: 0; font-size: 32px; }
-.main-title p { margin: 6px 0 0 0; opacity: 0.95; }
-.section-title { font-size: 22px; font-weight: 700; color: #0f172a; margin: 8px 0 10px 0; }
-</style>
-""", unsafe_allow_html=True)
-
+# --- 2. قاعدة البيانات الاحترافية ---
 def get_conn():
-    return sqlite3.connect("commune.db", check_same_thread=False)
+    conn = sqlite3.connect("askaouen_procurement.db")
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
     conn = get_conn()
     c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS correspondences (
+    # جدول الصفقات
+    c.execute("""CREATE TABLE IF NOT EXISTS markets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        reference TEXT, subject TEXT, ctype TEXT, department TEXT, status TEXT, created_at TEXT
-    )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS licenses (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        applicant_name TEXT, license_type TEXT, status TEXT, notes TEXT, created_at TEXT
-    )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS employees (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        full_name TEXT, department TEXT, position TEXT, status TEXT, created_at TEXT
-    )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS projects (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        project_name TEXT, progress INTEGER, budget TEXT, status TEXT, created_at TEXT
-    )""")
-    c.execute("""CREATE TABLE IF NOT EXISTS bc_records (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        bc_ref TEXT, fiscal_year INTEGER, subject TEXT, department TEXT, expense_type TEXT,
-        budget_line TEXT, estimated_amount REAL, manager_name TEXT, notes TEXT, created_at TEXT
-    )""")
+        market_ref TEXT UNIQUE, market_object TEXT, procedure_type TEXT,
+        estimate_amount REAL, date_j1 TEXT, date_j2 TEXT,
+        date_portail TEXT, created_at TEXT)""")
+    # جدول المتنافسين
+    c.execute("""CREATE TABLE IF NOT EXISTS competitors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, market_ref TEXT,
+        company_name TEXT, offer_amount REAL, status TEXT)""")
+    # جدول اللجنة
+    c.execute("""CREATE TABLE IF NOT EXISTS commission (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, market_ref TEXT,
+        member_name TEXT, member_role TEXT)""")
     conn.commit()
     conn.close()
 
-def insert_record(query, values):
-    conn = get_conn()
-    conn.execute(query, values)
-    conn.commit()
-    conn.close()
+# --- 3. محرك توليد المحاضر (مطابق للنماذج المرفوعة) ---
+def generate_askaouen_doc(doc_type, m):
+    doc = Document()
+    section = doc.sections[0]
+    section.top_margin, section.bottom_margin = Cm(1.5), Cm(1.5)
+    
+    # ترويسة الجماعة (Header)
+    header_tbl = doc.add_table(rows=1, cols=2)
+    header_tbl.width = Cm(18)
+    left_cell = header_tbl.rows[0].cells[0].paragraphs[0]
+    left_cell.add_run("ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nPROVINCE DE TAROUDANT\nCOMMUNE ASKAOUEN").bold = True
+    left_cell.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
-def fetch_all(query, params=()):
-    conn = get_conn()
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    doc.add_paragraph("\n")
 
+    # تحديد مسمى المحضر بناءً على القائمة المقدمة
+    doc_mapping = {
+        "PV_ADMIN": "PV DE DOSSIER ADMINISTRATIF ET TECHNIQUE",
+        "PV_TECH": "PV DE DOSSIER TECHNIQUE ET OFFRE TECHNIQUE",
+        "PV_FIN": "PV DE DOSSIER OFFRE FINANCIER",
+        "RAPPORT": "RAPPORT DE LA SOUS-COMMISSION TECHNIQUE",
+        "OS_NOTIF": "OS-NOTIFICATION",
+        "OS_COMM": "OS-COMMENCEMENT"
+    }
+    
+    title_text = doc_mapping.get(doc_type, doc_type)
+    
+    title_p = doc.add_paragraph()
+    title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_t = title_p.add_run(f"{title_text}\n{m['procedure_type'].upper()} N° : {m['market_ref']}")
+    run_t.bold = True
+    run_t.font.size = Pt(14)
+    run_t.underline = True
+
+    doc.add_paragraph(f"\nOBJET : {m['market_object']}").bold = True
+    doc.add_paragraph(f"ESTIMATION : {m['estimate_amount']} DHS TTC")
+
+    # إضافة جدول المتنافسين للمحاضر (PVs)
+    if "PV" in doc_type or "RAPPORT" in doc_type:
+        conn = get_conn()
+        comps = conn.execute("SELECT * FROM competitors WHERE market_ref = ?", (m['market_ref'],)).fetchall()
+        if comps:
+            doc.add_paragraph("\nTABLEAU DES OFFRES :").bold = True
+            table = doc.add_table(rows=1, cols=3)
+            table.style = 'Table Grid'
+            hdr = table.rows[0].cells
+            hdr[0].text, hdr[1].text, hdr[2].text = "Concurrent", "Montant", "Décision"
+            for c in comps:
+                row = table.add_row().cells
+                row[0].text, row[1].text, row[2].text = c['company_name'], f"{c['offer_amount']} DHS", c['status']
+        conn.close()
+
+    # التوقيعات (اللجنة)
+    doc.add_paragraph("\n\nSIGNATURE DES MEMBRES :").bold = True
+    conn = get_conn()
+    members = conn.execute("SELECT * FROM commission WHERE market_ref = ?", (m['market_ref'],)).fetchall()
+    conn.close()
+    
+    if members:
+        sig_tbl = doc.add_table(rows=0, cols=2)
+        for mem in members:
+            row = sig_tbl.add_row().cells
+            row[0].text, row[1].text = mem['member_name'], f"({mem['member_role']})"
+
+    doc.add_paragraph(f"\nFait à Askaouen, le {date.today().strftime('%d/%m/%Y')}")
+    
+    bio = io.BytesIO()
+    doc.save(bio)
+    return bio.getvalue()
+
+# --- 4. واجهة البرنامج ---
 init_db()
+st.sidebar.title("MENU ASKAOUEN")
+option = st.sidebar.selectbox("الانتقال إلى:", ["إدارة الصفقات", "الإحصائيات"])
 
-with st.sidebar:
-    menu = st.selectbox("اختر الوحدة", ["لوحة القيادة","المراسلات","الرخص","الموظفون","المشاريع","الصفقات العمومية","سندات الطلب BC"])
+if option == "إدارة الصفقات":
+    st.title("💼 تدبير الصفقات العمومية - جماعة أسكاون")
+    
+    tabs = st.tabs(["الصفقة", "المتنافسون", "اللجنة", "توليد الوثائق"])
 
-st.markdown("""
-<div class="main-title">
-    <h1>نظام تدبير مصالح الجماعة</h1>
-    <p>نسخة كاملة مصححة</p>
-</div>
-""", unsafe_allow_html=True)
+    with tabs[0]: # تسجيل الصفقة
+        with st.form("m_form"):
+            c1, c2 = st.columns(2)
+            ref = c1.text_input("مرجع الصفقة")
+            p_type = c1.selectbox("نوع المسطرة", ["Appel d'offres ouvert national", "Appel d'offres simplifié"])
+            obj = c1.text_area("الموضوع")
+            amt = c2.number_input("التقدير", min_value=0.0)
+            j1, j2, port = c2.date_input("جريدة 1"), c2.date_input("جريدة 2"), c2.date_input("البوابة")
+            if st.form_submit_button("حفظ"):
+                conn = get_conn()
+                conn.execute("INSERT INTO markets (market_ref, market_object, procedure_type, estimate_amount, date_j1, date_j2, date_portail, created_at) VALUES (?,?,?,?,?,?,?,?)", (ref, obj, p_type, amt, str(j1), str(j2), str(port), str(date.today())))
+                conn.commit(); conn.close(); st.success("تم الحفظ!")
 
-if menu == "لوحة القيادة":
-    st.markdown('<div class="section-title">لوحة القيادة</div>', unsafe_allow_html=True)
-    st.write("لوحة القيادة جاهزة")
-
-elif menu == "المراسلات":
-    st.markdown('<div class="section-title">تدبير المراسلات</div>', unsafe_allow_html=True)
-    st.write("قسم المراسلات جاهز")
-
-elif menu == "الرخص":
-    st.markdown('<div class="section-title">تدبير الرخص</div>', unsafe_allow_html=True)
-    st.write("قسم الرخص جاهز")
-
-elif menu == "الموظفون":
-    st.markdown('<div class="section-title">تدبير الموظفين</div>', unsafe_allow_html=True)
-    st.write("قسم الموظفين جاهز")
-
-elif menu == "المشاريع":
-    st.markdown('<div class="section-title">تتبع المشاريع</div>', unsafe_allow_html=True)
-    st.write("قسم المشاريع جاهز")
-
-elif menu == "الصفقات العمومية":
-    st.markdown('<div class="section-title">تدبير الصفقات العمومية</div>', unsafe_allow_html=True)
-    st.info("هذا هو المكان الصحيح الذي يوضع فيه كود الصفقات. الخطأ السابق كان لأن elif وُضع في أول الملف.")
-    st.code('''elif menu == "الصفقات العمومية":
-    # هنا ضع كود الصفقات الكامل
-    pass''', language="python")
-
-elif menu == "سندات الطلب BC":
-    st.markdown('<div class="section-title">تدبير سندات الطلب BC</div>', unsafe_allow_html=True)
-    st.write("قسم BC جاهز")
-
-st.markdown("---")
-st.caption("ملف مصحح لتفادي خطأ elif في أول الملف")
+    with tabs[3]: # توليد الوثائق حسب القائمة المطلوبة
+        markets = get_conn().execute("SELECT * FROM markets").fetchall()
+        if markets:
+            sel_ref = st.selectbox("اختر الصفقة لإصدار ملفاتها:", [r['market_ref'] for r in markets])
+            m_data = next(dict(r) for r in markets if r['market_ref'] == sel_ref)
+            
+            st.write("### اختر الوثيقة المراد تحميلها:")
+            c1, c2 = st.columns(2)
+            
+            # الربط مع القائمة التي قدمتها في المستند
+            doc_list = [
+                ("PV_ADMIN", "Pv dossier administratif [cite: 3]"),
+                ("PV_TECH", "Pv dossier technique [cite: 4]"),
+                ("PV_FIN", "Pv offre financier [cite: 9]"),
+                ("RAPPORT", "Rapport sous-commission [cite: 8]"),
+                ("OS_NOTIF", "OS-Notification [cite: 6]"),
+                ("OS_COMM", "OS-Commencement [cite: 5]")
+            ]
+            
+            for i, (k, v) in enumerate(doc_list):
+                col = c1 if i % 2 == 0 else c2
+                if col.button(f"تجهيز {v}"):
+                    data = generate_askaouen_doc(k, m_data)
+                    col.download_button(f"📥 تحميل {k}", data, f"{k}_{sel_ref}.docx")
