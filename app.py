@@ -1,7 +1,14 @@
-import streamlit as st
+import io
 from datetime import date
 
+import streamlit as st
+from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+
 st.set_page_config(page_title="Gestion des PV des marchés", layout="wide")
+
 
 # ---------------------------
 # Helpers
@@ -62,7 +69,6 @@ def init_state():
                 "excluded_reason_tech": "",
                 "complement_sent": "",
                 "complement_received": "",
-                "complement_ok": True,
             }
         ]
 
@@ -148,9 +154,8 @@ def reference_price_data():
     amounts = []
     for b in st.session_state.bidders:
         if b["name"].strip() and b["tech_ok"] and b["tech_score"] >= 70:
-            amounts.append(
-                (b["name"], b["amount_rectified"] if b["amount_rectified"] > 0 else b["amount"])
-            )
+            value = b["amount_rectified"] if b["amount_rectified"] > 0 else b["amount"]
+            amounts.append((b["name"], value))
     if not amounts:
         return 0.0, [], None
     ref = (st.session_state.estimation + sum(v for _, v in amounts)) / (len(amounts) + 1)
@@ -159,6 +164,9 @@ def reference_price_data():
     return ref, amounts, winner
 
 
+# ---------------------------
+# Text generators
+# ---------------------------
 def build_pv1():
     adm_ok, adm_reserved = admissible_names("admin")
     tech_ok, tech_reserved = admissible_names("tech")
@@ -361,7 +369,7 @@ LES MEMBRES
 
 
 def build_pv3():
-    ref, amounts, winner = reference_price_data()
+    _, _, winner = reference_price_data()
     winner_name = winner[0] if winner else "................................"
     winner_amount = f"{winner[1]:,.2f} DHS" if winner else "................................"
     invited = next((b for b in st.session_state.bidders if b["name"] == winner_name), None)
@@ -446,6 +454,60 @@ Le Président
 
 
 # ---------------------------
+# DOCX export
+# ---------------------------
+def text_to_docx_bytes(title, content):
+    doc = Document()
+
+    section = doc.sections[0]
+    section.top_margin = Pt(42)
+    section.bottom_margin = Pt(42)
+    section.left_margin = Pt(50)
+    section.right_margin = Pt(50)
+
+    normal_style = doc.styles["Normal"]
+    normal_style.font.name = "Arial"
+    normal_style.font.size = Pt(11)
+
+    title_p = doc.add_paragraph()
+    title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = title_p.add_run(title)
+    r.bold = True
+    r.font.size = Pt(14)
+
+    doc.add_paragraph("")
+
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped == "":
+            doc.add_paragraph("")
+            continue
+
+        p = doc.add_paragraph()
+        if stripped.startswith("ROYAUME DU MAROC") or stripped.startswith("MINISTERE DE"):
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        elif stripped.startswith("PROCES VERBAL") or stripped.startswith("ORDRE DE SERVICE") or stripped.startswith("Rapport"):
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        run = p.add_run(line)
+        run.font.size = Pt(11)
+        if (
+            stripped.startswith("PROCES VERBAL")
+            or stripped.startswith("ORDRE DE SERVICE")
+            or stripped.startswith("Rapport")
+            or stripped.startswith("SIGNE")
+            or stripped.startswith("LES MEMBRES")
+            or stripped.startswith("LE PRESIDENT")
+        ):
+            run.bold = True
+
+    bio = io.BytesIO()
+    doc.save(bio)
+    bio.seek(0)
+    return bio.getvalue()
+
+
+# ---------------------------
 # UI
 # ---------------------------
 init_state()
@@ -463,43 +525,24 @@ with tab1:
         st.session_state.reference = st.text_input("Référence AO / marché", st.session_state.reference)
         st.session_state.objet = st.text_area("Objet", st.session_state.objet, height=100)
         st.session_state.estimation = st.number_input(
-            "Estimation TTC (DHS)",
-            min_value=0.0,
-            value=float(st.session_state.estimation),
-            step=1000.0
+            "Estimation TTC (DHS)", min_value=0.0, value=float(st.session_state.estimation), step=1000.0
         )
     with c2:
         st.session_state.decision_no = st.text_input("N° décision ordonnateur", st.session_state.decision_no)
-        st.session_state.decision_date = str(
-            st.date_input("Date décision", date.fromisoformat(st.session_state.decision_date))
-        )
-        st.session_state.session_date = str(
-            st.date_input("Date séance", date.fromisoformat(st.session_state.session_date), key="session_date")
-        )
+        st.session_state.decision_date = str(st.date_input("Date décision", date.fromisoformat(st.session_state.decision_date)))
+        st.session_state.session_date = str(st.date_input("Date séance", date.fromisoformat(st.session_state.session_date), key="session_date"))
         st.session_state.session_time = st.text_input("Heure séance", st.session_state.session_time)
         st.session_state.session_place = st.text_input("Lieu séance", st.session_state.session_place)
         st.session_state.president = st.text_input("Président maître d’ouvrage", st.session_state.president)
         st.session_state.publication_1 = st.text_input("Publication journal 1", st.session_state.publication_1)
         st.session_state.publication_2 = st.text_input("Publication journal 2", st.session_state.publication_2)
-        st.session_state.portail_publication = st.text_input(
-            "Publication portail marchés publics",
-            st.session_state.portail_publication
-        )
-        st.session_state.reprise_date = str(
-            st.date_input("Date reprise", date.fromisoformat(st.session_state.reprise_date))
-        )
+        st.session_state.portail_publication = st.text_input("Publication portail marchés publics", st.session_state.portail_publication)
+        st.session_state.reprise_date = str(st.date_input("Date reprise", date.fromisoformat(st.session_state.reprise_date)))
         st.session_state.reprise_time = st.text_input("Heure reprise", st.session_state.reprise_time)
 
 with tab2:
     st.subheader("Commission d’appel d’offres")
-    committee_n = st.number_input(
-        "Nombre de membres",
-        min_value=1,
-        max_value=10,
-        value=len(st.session_state.committee),
-        step=1
-    )
-
+    committee_n = st.number_input("Nombre de membres", min_value=1, max_value=10, value=len(st.session_state.committee), step=1)
     while len(st.session_state.committee) < committee_n:
         st.session_state.committee.append({"name": "", "quality": "", "role": "MEMBRE"})
     while len(st.session_state.committee) > committee_n:
@@ -509,22 +552,10 @@ with tab2:
         a, b, c = st.columns([2, 2, 1])
         m["name"] = a.text_input(f"Nom membre {i+1}", m["name"], key=f"cm_name_{i}")
         m["quality"] = b.text_input(f"Qualité {i+1}", m["quality"], key=f"cm_quality_{i}")
-        m["role"] = c.selectbox(
-            f"Rôle {i+1}",
-            ["PRESIDENT", "MEMBRE"],
-            index=0 if m["role"] == "PRESIDENT" else 1,
-            key=f"cm_role_{i}"
-        )
+        m["role"] = c.selectbox(f"Rôle {i+1}", ["PRESIDENT", "MEMBRE"], index=0 if m["role"] == "PRESIDENT" else 1, key=f"cm_role_{i}")
 
     st.subheader("Sous-commission technique")
-    sub_n = st.number_input(
-        "Nombre membres sous-commission",
-        min_value=1,
-        max_value=5,
-        value=len(st.session_state.subcommittee),
-        step=1
-    )
-
+    sub_n = st.number_input("Nombre membres sous-commission", min_value=1, max_value=5, value=len(st.session_state.subcommittee), step=1)
     while len(st.session_state.subcommittee) < sub_n:
         st.session_state.subcommittee.append({"name": "", "quality": "Technicien à la commune"})
     while len(st.session_state.subcommittee) > sub_n:
@@ -537,14 +568,7 @@ with tab2:
 
 with tab3:
     st.subheader("Concurrents")
-    bid_n = st.number_input(
-        "Nombre de concurrents",
-        min_value=1,
-        max_value=20,
-        value=len(st.session_state.bidders),
-        step=1
-    )
-
+    bid_n = st.number_input("Nombre de concurrents", min_value=1, max_value=20, value=len(st.session_state.bidders), step=1)
     while len(st.session_state.bidders) < bid_n:
         st.session_state.bidders.append({
             "name": "",
@@ -558,7 +582,6 @@ with tab3:
             "excluded_reason_tech": "",
             "complement_sent": "",
             "complement_received": "",
-            "complement_ok": True,
         })
     while len(st.session_state.bidders) > bid_n:
         st.session_state.bidders.pop()
@@ -567,14 +590,7 @@ with tab3:
         st.markdown(f"### Concurrent {i+1}")
         c1, c2 = st.columns(2)
         b["name"] = c1.text_input("Nom", b["name"], key=f"bid_name_{i}")
-        b["tech_score"] = c2.number_input(
-            "Note technique",
-            min_value=0.0,
-            max_value=100.0,
-            value=float(b["tech_score"]),
-            step=1.0,
-            key=f"bid_score_{i}"
-        )
+        b["tech_score"] = c2.number_input("Note technique", min_value=0.0, max_value=100.0, value=float(b["tech_score"]), step=1.0, key=f"bid_score_{i}")
 
         c3, c4, c5 = st.columns(3)
         b["admin_ok"] = c3.checkbox("Admis administratif", value=b["admin_ok"], key=f"bid_admin_{i}")
@@ -582,64 +598,26 @@ with tab3:
         b["financial_ok"] = c5.checkbox("Admis financier", value=b["financial_ok"], key=f"bid_fin_{i}")
 
         c6, c7 = st.columns(2)
-        b["amount"] = c6.number_input(
-            "Montant engagement",
-            min_value=0.0,
-            value=float(b["amount"]),
-            step=1000.0,
-            key=f"bid_amount_{i}"
-        )
-        b["amount_rectified"] = c7.number_input(
-            "Montant rectifié",
-            min_value=0.0,
-            value=float(b["amount_rectified"]),
-            step=1000.0,
-            key=f"bid_amount_rect_{i}"
-        )
+        b["amount"] = c6.number_input("Montant engagement", min_value=0.0, value=float(b["amount"]), step=1000.0, key=f"bid_amount_{i}")
+        b["amount_rectified"] = c7.number_input("Montant rectifié", min_value=0.0, value=float(b["amount_rectified"]), step=1000.0, key=f"bid_amount_rect_{i}")
 
         c8, c9 = st.columns(2)
-        b["excluded_reason_admin"] = c8.text_input(
-            "Motif écartement administratif",
-            b["excluded_reason_admin"],
-            key=f"bid_exc_admin_{i}"
-        )
-        b["excluded_reason_tech"] = c9.text_input(
-            "Motif écartement technique",
-            b["excluded_reason_tech"],
-            key=f"bid_exc_tech_{i}"
-        )
+        b["excluded_reason_admin"] = c8.text_input("Motif écartement administratif", b["excluded_reason_admin"], key=f"bid_exc_admin_{i}")
+        b["excluded_reason_tech"] = c9.text_input("Motif écartement technique", b["excluded_reason_tech"], key=f"bid_exc_tech_{i}")
 
         c10, c11 = st.columns(2)
-        b["complement_sent"] = c10.text_input(
-            "Date envoi invitation complément",
-            b["complement_sent"],
-            key=f"bid_sent_{i}"
-        )
-        b["complement_received"] = c11.text_input(
-            "Date dépôt complément",
-            b["complement_received"],
-            key=f"bid_received_{i}"
-        )
+        b["complement_sent"] = c10.text_input("Date envoi invitation complément", b["complement_sent"], key=f"bid_sent_{i}")
+        b["complement_received"] = c11.text_input("Date dépôt complément", b["complement_received"], key=f"bid_received_{i}")
 
 with tab4:
     st.subheader("Génération des documents")
     ref, _, winner = reference_price_data()
     if winner:
-        st.info(
-            f"Offre la plus proche du prix de référence ({ref:,.2f} DHS) : "
-            f"{winner[0]} - {winner[1]:,.2f} DHS"
-        )
+        st.info(f"Offre la plus proche du prix de référence ({ref:,.2f} DHS) : {winner[0]} - {winner[1]:,.2f} DHS")
 
     doc_type = st.selectbox(
         "Choisir le document",
-        [
-            "PV 1ère séance",
-            "Rapport sous-commission",
-            "PV 2ème séance",
-            "PV 3ème séance",
-            "OS notification",
-            "OS commencement",
-        ]
+        ["PV 1ère séance", "Rapport sous-commission", "PV 2ème séance", "PV 3ème séance", "OS notification", "OS commencement"]
     )
 
     winner_name = winner[0] if winner else ""
@@ -656,19 +634,26 @@ with tab4:
         }
 
         text = generators[doc_type]()
-        st.text_area("Document généré", text, height=600)
+        st.text_area("Document généré", text, height=550)
 
-        filename = (
-            doc_type.lower()
-            .replace(" ", "_")
-            .replace("è", "e")
-            .replace("é", "e")
-            + ".txt"
+        txt_filename = (
+            doc_type.lower().replace(" ", "_").replace("è", "e").replace("é", "e") + ".txt"
+        )
+        docx_filename = (
+            doc_type.lower().replace(" ", "_").replace("è", "e").replace("é", "e") + ".docx"
         )
 
         st.download_button(
             "Télécharger TXT",
             text,
-            file_name=filename,
+            file_name=txt_filename,
             mime="text/plain"
+        )
+
+        docx_bytes = text_to_docx_bytes(doc_type, text)
+        st.download_button(
+            "Télécharger Word (.docx)",
+            docx_bytes,
+            file_name=docx_filename,
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
