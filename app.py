@@ -25,8 +25,8 @@ def init_state():
         "reference": "",
         "objet": "",
         "decision_no": "",
-        "decision_date": str(date.today()),
-        "session_date": str(date.today()),
+        "decision_date": date.today(),
+        "session_date": date.today(),
         "session_time": "10:00",
         "session_place": "Salle de réunion de la Commune",
         "estimation": 0.0,
@@ -34,7 +34,7 @@ def init_state():
         "publication_1": "",
         "publication_2": "",
         "portail_publication": "",
-        "reprise_date": str(date.today()),
+        "reprise_date": date.today(),
         "reprise_time": "10:00",
         "complement_limit_days": 7,
         "signature_place": "ASKAOUEN",
@@ -78,14 +78,19 @@ def init_state():
 
 
 # =========================================================
-# BUSINESS HELPERS
+# HELPERS
 # =========================================================
+def fmt_date(d):
+    return d.strftime("%d/%m/%Y") if isinstance(d, date) else str(d)
+
+
 def committee_block():
     lines = []
     for m in st.session_state.committee:
         if m["name"].strip():
             lines.append(f"· {m['name']} : {m['quality']} -------------------------------------- {m['role']}")
     return "\n".join(lines) if lines else "· ..............................................................."
+
 
 def bidder_names_numbered(filter_fn=None):
     items = []
@@ -95,6 +100,7 @@ def bidder_names_numbered(filter_fn=None):
             items.append(f"{idx}) {b['name']}")
             idx += 1
     return "\n".join(items) if items else "NEANT"
+
 
 def admissible_names(kind="admin"):
     names = []
@@ -116,6 +122,7 @@ def admissible_names(kind="admin"):
                     names.append(b["name"])
     return names, reserved
 
+
 def excluded_rows(reason_key):
     rows = []
     for b in st.session_state.bidders:
@@ -124,12 +131,14 @@ def excluded_rows(reason_key):
             rows.append((b["name"], reason))
     return rows
 
+
 def tech_score_rows():
     rows = []
     for b in st.session_state.bidders:
         if b["name"].strip() and b["admin_ok"]:
             rows.append((b["name"], str(b["tech_score"])))
     return rows
+
 
 def financial_rows():
     rows = []
@@ -138,6 +147,7 @@ def financial_rows():
             rows.append((b["name"], f"{b['amount']:,.2f} DHS"))
     return rows
 
+
 def rectification_rows():
     rows = []
     for b in st.session_state.bidders:
@@ -145,6 +155,7 @@ def rectification_rows():
             rectified = b["amount_rectified"] if b["amount_rectified"] > 0 else b["amount"]
             rows.append((b["name"], f"{b['amount']:,.2f} DHS", f"{rectified:,.2f} DHS"))
     return rows
+
 
 def reference_price_data():
     amounts = []
@@ -183,7 +194,7 @@ PROCES VERBAL D'APPEL D'OFFRES OUVERT
 SUR OFFRE DE PRIX N° : {st.session_state.reference}
 1ère Séance Publique
 
-Le {st.session_state.session_date} à {st.session_state.session_time}, une commission d’appel d’offres, conformément à la décision de l’ordonnateur n° {st.session_state.decision_no} du {st.session_state.decision_date}, est composée comme suit :
+Le {fmt_date(st.session_state.session_date)} à {st.session_state.session_time}, une commission d’appel d’offres, conformément à la décision de l’ordonnateur n° {st.session_state.decision_no} du {fmt_date(st.session_state.decision_date)}, est composée comme suit :
 
 {committee_block()}
 
@@ -231,8 +242,9 @@ Ensuite, et conformément aux dispositions de l’article 38 du décret n°2-22-
 La sous-commission technique est composée de :
 {sub}
 
-Le président de la commission suspend la séance et fixe la date de {st.session_state.reprise_date} à {st.session_state.reprise_time} pour la reprise des travaux de la séance.
+Le président de la commission suspend la séance et fixe la date de {fmt_date(st.session_state.reprise_date)} à {st.session_state.reprise_time} pour la reprise des travaux de la séance.
 """.strip()
+
 
 def build_rapport():
     below = [b["name"] for b in st.session_state.bidders if b["name"].strip() and b["tech_score"] < 70]
@@ -258,7 +270,7 @@ Appel d’offres ouvert {st.session_state.reference}
 
 EXAMEN DES OFFRES TECHNIQUES
 
-Le {st.session_state.reprise_date} à {st.session_state.reprise_time}, faisant suite à la séance d’ouverture des plis et à la décision du président de la commission, une sous-commission technique a été désignée conformément à l’article 38 du décret 2-22-431 relatif aux marchés publics.
+Le {fmt_date(st.session_state.reprise_date)} à {st.session_state.reprise_time}, faisant suite à la séance d’ouverture des plis et à la décision du président de la commission, une sous-commission technique a été désignée conformément à l’article 38 du décret 2-22-431 relatif aux marchés publics.
 
 Cette sous-commission technique est composée de :
 {sub}
@@ -274,6 +286,7 @@ La sous-commission technique arrête la liste des concurrents dont la note des o
 La sous-commission technique arrête la liste des concurrents dont la note des offres techniques est inférieure à 70 points :
 {chr(10).join([f'· {x}' for x in below]) if below else 'NEANT'}
 """.strip()
+
 
 def build_pv2():
     ref, amounts, winner = reference_price_data()
@@ -296,7 +309,7 @@ PROCES VERBAL D'APPEL D'OFFRES OUVERT
 SUR OFFRE DE PRIX N° : {st.session_state.reference}
 2ème Séance Publique
 
-Conformément à la décision de l’ordonnateur n° {st.session_state.decision_no} du {st.session_state.decision_date}, le {st.session_state.reprise_date} à {st.session_state.reprise_time}, la commission composée comme suit :
+Conformément à la décision de l’ordonnateur n° {st.session_state.decision_no} du {fmt_date(st.session_state.decision_date)}, le {fmt_date(st.session_state.reprise_date)} à {st.session_state.reprise_time}, la commission composée comme suit :
 {committee_block()}
 
 s’est réunie en séance publique à {st.session_state.session_place} en vue d’étudier le rapport de la sous-commission technique.
@@ -316,6 +329,7 @@ L’offre économiquement la plus avantageuse à proposer au maître d’ouvrage
 
 La commission invite, par voie électronique, le concurrent ayant présenté l’offre économiquement la plus avantageuse, dans un délai de {st.session_state.complement_limit_days} jours après réception de la lettre, à produire le complément du dossier administratif.
 """.strip()
+
 
 def build_pv3():
     _, _, winner = reference_price_data()
@@ -338,7 +352,7 @@ PROCES VERBAL D'APPEL D'OFFRES OUVERT
 SUR OFFRE DE PRIX N° : {st.session_state.reference}
 3ème Séance Publique
 
-Le {st.session_state.session_date} à {st.session_state.session_time}, une commission d’appel d’offres, conformément à la décision de l’ordonnateur n° {st.session_state.decision_no} du {st.session_state.decision_date}, et composée comme suit :
+Le {fmt_date(st.session_state.session_date)} à {st.session_state.session_time}, une commission d’appel d’offres, conformément à la décision de l’ordonnateur n° {st.session_state.decision_no} du {fmt_date(st.session_state.decision_date)}, et composée comme suit :
 {committee_block()}
 
 s’est réunie en séance publique à {st.session_state.session_place}, en vue de procéder à l’ouverture du complément du dossier administratif de l’attributaire de l’appel d’offres ouvert sur offre de prix N° : {st.session_state.reference}, relatif à : {st.session_state.objet}.
@@ -351,6 +365,7 @@ Dossier déposé le : {received or '................................'}
 La commission examine les pièces complémentaires du dossier administratif et la réponse reçue, les juge acceptables, et décide de proposer au maître d’ouvrage de retenir l’offre du concurrent ayant présenté l’offre la plus avantageuse, à savoir :
 {winner_name} pour un montant de {winner_amount}
 """.strip()
+
 
 def build_os_notification(company_name):
     return f"""ROYAUME DU MAROC
@@ -369,6 +384,7 @@ informe l’entreprise {company_name} que le marché ayant pour objet : {st.sess
 est approuvé à la date du : ................................
 Par conséquent, l’intéressé est invité à acquitter les droits de timbre dus au titre du présent marché, conformément à la législation en vigueur.
 """.strip()
+
 
 def build_os_commencement(company_name):
     return f"""ROYAUME DU MAROC
@@ -402,6 +418,7 @@ def set_cell_text(cell, text, bold=False, center=False):
     run.font.name = "Arial"
     run.font.size = Pt(10)
 
+
 def set_table_borders(table):
     tbl = table._tbl
     tblPr = tbl.tblPr
@@ -414,6 +431,7 @@ def set_table_borders(table):
         elem.set(qn("w:color"), "000000")
         borders.append(elem)
     tblPr.append(borders)
+
 
 def add_header_block(doc):
     p = doc.add_paragraph()
@@ -431,6 +449,7 @@ def add_header_block(doc):
         r.font.name = "Arial"
         r.font.size = Pt(11)
 
+
 def add_title(doc, title, subtitle=""):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -446,6 +465,7 @@ def add_title(doc, title, subtitle=""):
         r2.font.name = "Arial"
         r2.font.size = Pt(11)
 
+
 def add_paragraph(doc, text, bold=False, center=False):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER if center else WD_ALIGN_PARAGRAPH.JUSTIFY
@@ -454,6 +474,7 @@ def add_paragraph(doc, text, bold=False, center=False):
     r.font.name = "Arial"
     r.font.size = Pt(11)
     return p
+
 
 def add_simple_table(doc, headers, rows):
     table = doc.add_table(rows=1, cols=len(headers))
@@ -471,11 +492,12 @@ def add_simple_table(doc, headers, rows):
             set_cell_text(cells[i], val, center=(i > 0))
     return table
 
+
 def add_signature_block(doc):
     doc.add_paragraph("")
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    r = p.add_run(f"Fait à {st.session_state.signature_place}, le : {st.session_state.session_date}")
+    r = p.add_run(f"Fait à {st.session_state.signature_place}, le : {fmt_date(st.session_state.session_date)}")
     r.font.name = "Arial"
     r.font.size = Pt(11)
 
@@ -493,6 +515,7 @@ def add_signature_block(doc):
     r3.bold = True
     r3.font.name = "Arial"
     r3.font.size = Pt(11)
+
 
 def create_base_doc():
     doc = Document()
@@ -516,7 +539,7 @@ def build_docx_pv1():
     add_title(doc, "PROCES VERBAL D'APPEL D'OFFRES OUVERT", f"SUR OFFRE DE PRIX N° : {st.session_state.reference}")
     add_title(doc, "1ère Séance Publique")
 
-    add_paragraph(doc, f"Le {st.session_state.session_date} à {st.session_state.session_time}, une commission d’appel d’offres, conformément à la décision de l’ordonnateur n° {st.session_state.decision_no} du {st.session_state.decision_date}, est composée comme suit :")
+    add_paragraph(doc, f"Le {fmt_date(st.session_state.session_date)} à {st.session_state.session_time}, une commission d’appel d’offres, conformément à la décision de l’ordonnateur n° {st.session_state.decision_no} du {fmt_date(st.session_state.decision_date)}, est composée comme suit :")
 
     members = [(m["name"], m["quality"], m["role"]) for m in st.session_state.committee if m["name"].strip()]
     add_simple_table(doc, ["Nom", "Qualité", "Rôle"], members or [("...", "...", "...")])
@@ -558,13 +581,14 @@ def build_docx_pv1():
     sub_rows = [(m["name"], m["quality"]) for m in st.session_state.subcommittee if m["name"].strip()]
     add_simple_table(doc, ["Nom", "Qualité"], sub_rows or [("...", "Technicien à la commune")])
 
-    add_paragraph(doc, f"Le président de la commission suspend la séance et fixe la date de {st.session_state.reprise_date} à {st.session_state.reprise_time} pour la reprise des travaux de la séance.")
+    add_paragraph(doc, f"Le président de la commission suspend la séance et fixe la date de {fmt_date(st.session_state.reprise_date)} à {st.session_state.reprise_time} pour la reprise des travaux de la séance.")
     add_signature_block(doc)
 
     bio = io.BytesIO()
     doc.save(bio)
     bio.seek(0)
     return bio.getvalue()
+
 
 def build_docx_rapport():
     doc = create_base_doc()
@@ -573,7 +597,7 @@ def build_docx_rapport():
     add_paragraph(doc, st.session_state.objet, bold=True, center=True)
     add_paragraph(doc, "EXAMEN DES OFFRES TECHNIQUES", bold=True, center=True)
 
-    add_paragraph(doc, f"Le {st.session_state.reprise_date} à {st.session_state.reprise_time}, faisant suite à la séance d’ouverture des plis et à la décision du président de la commission, une sous-commission technique a été désignée conformément à l’article 38 du décret 2-22-431 relatif aux marchés publics.")
+    add_paragraph(doc, f"Le {fmt_date(st.session_state.reprise_date)} à {st.session_state.reprise_time}, faisant suite à la séance d’ouverture des plis et à la décision du président de la commission, une sous-commission technique a été désignée conformément à l’article 38 du décret 2-22-431 relatif aux marchés publics.")
 
     sub_rows = [(m["name"], m["quality"]) for m in st.session_state.subcommittee if m["name"].strip()]
     add_simple_table(doc, ["Nom", "Qualité"], sub_rows or [("...", "Technicien à la commune")])
@@ -592,6 +616,7 @@ def build_docx_rapport():
     bio.seek(0)
     return bio.getvalue()
 
+
 def build_docx_pv2():
     doc = create_base_doc()
     add_header_block(doc)
@@ -601,7 +626,7 @@ def build_docx_pv2():
     ref, amounts, winner = reference_price_data()
     winner_text = f"{winner[0]} - {winner[1]:,.2f} DHS" if winner else "NEANT"
 
-    add_paragraph(doc, f"Conformément à la décision de l’ordonnateur n° {st.session_state.decision_no} du {st.session_state.decision_date}, le {st.session_state.reprise_date} à {st.session_state.reprise_time}, la commission s’est réunie en séance publique à {st.session_state.session_place} en vue d’étudier le rapport de la sous-commission technique.")
+    add_paragraph(doc, f"Conformément à la décision de l’ordonnateur n° {st.session_state.decision_no} du {fmt_date(st.session_state.decision_date)}, le {fmt_date(st.session_state.reprise_date)} à {st.session_state.reprise_time}, la commission s’est réunie en séance publique à {st.session_state.session_place} en vue d’étudier le rapport de la sous-commission technique.")
 
     add_paragraph(doc, "Liste et notes des offres techniques des concurrents admissibles :")
     add_simple_table(doc, ["Concurrents", "Note Technique"], tech_score_rows() or [("NEANT", "0")])
@@ -612,7 +637,7 @@ def build_docx_pv2():
     add_paragraph(doc, "Rectification des montants :")
     add_simple_table(doc, ["Concurrents", "Avant rectification", "Montant rectifié"], rectification_rows() or [("NEANT", "0 DHS", "0 DHS")])
 
-    calc_rows = [(f"Estimation", f"{st.session_state.estimation:,.2f} DHS")]
+    calc_rows = [("Estimation", f"{st.session_state.estimation:,.2f} DHS")]
     calc_rows.extend([(n, f"{v:,.2f} DHS") for n, v in amounts] or [("Aucune offre admissible", "0 DHS")])
     calc_rows.append(("Prix de référence", f"{ref:,.2f} DHS"))
     add_paragraph(doc, "Calcul du prix de référence :")
@@ -630,6 +655,7 @@ def build_docx_pv2():
     bio.seek(0)
     return bio.getvalue()
 
+
 def build_docx_pv3():
     doc = create_base_doc()
     add_header_block(doc)
@@ -643,7 +669,7 @@ def build_docx_pv3():
     sent = invited["complement_sent"] if invited else ""
     received = invited["complement_received"] if invited else ""
 
-    add_paragraph(doc, f"Le {st.session_state.session_date} à {st.session_state.session_time}, la commission s’est réunie en séance publique à {st.session_state.session_place} pour l’ouverture du complément du dossier administratif de l’attributaire relatif à : {st.session_state.objet}.")
+    add_paragraph(doc, f"Le {fmt_date(st.session_state.session_date)} à {st.session_state.session_time}, la commission s’est réunie en séance publique à {st.session_state.session_place} pour l’ouverture du complément du dossier administratif de l’attributaire relatif à : {st.session_state.objet}.")
     add_simple_table(doc, ["Concurrent concerné", "Date d’envoi", "Date de dépôt"], [(winner_name, sent or "...", received or "...")])
     add_paragraph(doc, f"La commission décide de proposer au maître d’ouvrage de retenir l’offre du concurrent : {winner_name} pour un montant de {winner_amount}.", bold=True)
 
@@ -652,6 +678,7 @@ def build_docx_pv3():
     doc.save(bio)
     bio.seek(0)
     return bio.getvalue()
+
 
 def build_docx_os_notification(company_name):
     doc = create_base_doc()
@@ -665,6 +692,7 @@ def build_docx_os_notification(company_name):
     doc.save(bio)
     bio.seek(0)
     return bio.getvalue()
+
 
 def build_docx_os_commencement(company_name):
     doc = create_base_doc()
@@ -690,6 +718,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["Données générales", "Commission", "Concurr
 
 with tab1:
     c1, c2 = st.columns(2)
+
     with c1:
         st.session_state.commune = st.text_input("Commune", st.session_state.commune)
         st.session_state.province = st.text_input("Province", st.session_state.province)
@@ -701,15 +730,27 @@ with tab1:
 
     with c2:
         st.session_state.decision_no = st.text_input("N° décision ordonnateur", st.session_state.decision_no)
-        st.session_state.decision_date = str(st.date_input("Date décision", date.fromisoformat(st.session_state.decision_date)))
-        st.session_state.session_date = str(st.date_input("Date séance", date.fromisoformat(st.session_state.session_date), key="session_date"))
+        st.session_state.decision_date = st.date_input(
+            "Date décision",
+            value=st.session_state.decision_date,
+            key="decision_date_widget"
+        )
+        st.session_state.session_date = st.date_input(
+            "Date séance",
+            value=st.session_state.session_date,
+            key="session_date_widget"
+        )
         st.session_state.session_time = st.text_input("Heure séance", st.session_state.session_time)
         st.session_state.session_place = st.text_input("Lieu séance", st.session_state.session_place)
         st.session_state.president = st.text_input("Président maître d’ouvrage", st.session_state.president)
         st.session_state.publication_1 = st.text_input("Publication journal 1", st.session_state.publication_1)
         st.session_state.publication_2 = st.text_input("Publication journal 2", st.session_state.publication_2)
         st.session_state.portail_publication = st.text_input("Publication portail marchés publics", st.session_state.portail_publication)
-        st.session_state.reprise_date = str(st.date_input("Date reprise", date.fromisoformat(st.session_state.reprise_date)))
+        st.session_state.reprise_date = st.date_input(
+            "Date reprise",
+            value=st.session_state.reprise_date,
+            key="reprise_date_widget"
+        )
         st.session_state.reprise_time = st.text_input("Heure reprise", st.session_state.reprise_time)
         st.session_state.signature_place = st.text_input("Lieu de signature", st.session_state.signature_place)
 
