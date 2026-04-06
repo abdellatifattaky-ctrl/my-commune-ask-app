@@ -1,162 +1,292 @@
 import streamlit as st
-import sqlite3
-import io
-import pandas as pd
 from datetime import date
-from docx import Document
-from docx.shared import Cm, Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-# --- 1. إعدادات وقاعدة البيانات ---
-def get_conn():
-    conn = sqlite3.connect("askaouen_final_2023.db")
-    conn.row_factory = sqlite3.Row
-    return conn
+st.set_page_config(page_title="مولد محاضر الصفقات", layout="wide")
 
-def init_db():
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS markets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        market_ref TEXT UNIQUE, market_object TEXT, procedure_type TEXT,
-        estimate_total REAL, date_j1 TEXT, date_j2 TEXT, date_portail TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS competitors (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, market_ref TEXT,
-        company_name TEXT, offer_amount REAL, status TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS commission (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, market_ref TEXT,
-        member_name TEXT, member_role TEXT)""")
-    conn.commit()
-    conn.close()
+st.title("مولد محاضر الصفقات العمومية")
+st.caption("نسخة أولية لتوليد محاضر الصفقات بصيغة إدارية عربية")
 
-# --- 2. معادلة الثمن المرجعي (مرسوم 2023) ---
-def calculate_ref_price(admin_est, offers):
-    if not offers: return admin_est
-    avg_offers = sum(offers) / len(offers)
-    return (admin_est + avg_offers) / 2
+# ----------------------------
+# Helpers
+# ----------------------------
+def build_opening_minutes(data):
+    members_text = "، ".join(
+        [f"{m['name']} ({m['role']})" for m in data["committee"] if m["name"].strip()]
+    )
 
-# --- 3. محرك توليد الوثائق (القائمة التسعة + التنسيق السطري) ---
-def generate_askaouen_docx(doc_key, m, comps, members):
-    doc = Document()
-    section = doc.sections[0]
-    section.top_margin, section.left_margin = Cm(1.5), Cm(2)
-    
-    # الترويسة الرسمية
-    header = doc.add_paragraph()
-    header.add_run("ROYAUME DU MAROC\nMINISTERE DE L'INTERIEUR\nPROVINCE DE TAROUDANT\nCERCLE DE TALIOUINE\nCOMMUNE ASKAOUEN").bold = True
+    bidders_lines = []
+    for i, b in enumerate(data["bidders"], start=1):
+        if not b["company_name"].strip():
+            continue
 
-    # مسميات المحاضر (قائمة ملفك الأصلية)
-    titles = {
-        "pv_admin": "Pv de dossier administrative et technique",
-        "pv_tech": "Pv de dossier administrative et technique et offer technique si existance",
-        "pv_3eme": "Pv de 3 eme seance pour le complement",
-        "pv_fin": "Pv de dossier offer financier",
-        "rapport": "Rapport de sous commisession pour etudier offer tech",
-        "os_comm": "Os-commencement",
-        "os_notif": "Os-notification"
+        admin_status = "أدلى بالملف الإداري" if b["admin_file"] else "لم يدل بالملف الإداري"
+        tech_status = "أدلى بالملف التقني" if b["technical_file"] else "لم يدل بالملف التقني"
+        fin_status = "أدلى بالعرض المالي" if b["financial_file"] else "لم يدل بالعرض المالي"
+
+        bidders_lines.append(
+            f"{i}- {b['company_name']}، ممثله: {b['representative']}، "
+            f"{admin_status}، {tech_status}، {fin_status}."
+        )
+
+    bidders_text = "\n".join(bidders_lines) if bidders_lines else "لم يتم تسجيل أي متنافس."
+
+    minutes = f"""
+محضر فتح الأظرفة
+
+في يوم {data['session_date']} على الساعة {data['session_time']}، اجتمعت لجنة فتح الأظرفة بمقر {data['session_place']}،
+وذلك من أجل فتح الأظرفة المتعلقة بـ "{data['title']}" تحت رقم "{data['reference_number']}"،
+لفائدة {data['owner_entity']}، برئاسة {data['president']}، وبحضور السادة أعضاء اللجنة: {members_text}.
+
+وبعد افتتاح الجلسة، تم تسجيل المتنافسين والملفات المودعة كما يلي:
+{bidders_text}
+
+وبناءً عليه، تم تحرير هذا المحضر في التاريخ أعلاه لاتخاذ المتعين.
+
+الإمضاءات:
+الرئيس: {data['president']}
+"""
+    return minutes.strip()
+
+
+# ----------------------------
+# Sidebar
+# ----------------------------
+st.sidebar.header("القائمة")
+page = st.sidebar.radio(
+    "اختر الصفحة",
+    ["البيانات الأساسية", "أعضاء اللجنة", "المتنافسون", "توليد المحضر"]
+)
+
+# ----------------------------
+# Session State Initialization
+# ----------------------------
+if "committee" not in st.session_state:
+    st.session_state.committee = [
+        {"name": "", "role": "عضو"},
+        {"name": "", "role": "عضو"},
+        {"name": "", "role": "مقرر"},
+    ]
+
+if "bidders" not in st.session_state:
+    st.session_state.bidders = [
+        {
+            "company_name": "",
+            "representative": "",
+            "admin_file": True,
+            "technical_file": True,
+            "financial_file": True,
+            "offer_amount": 0.0,
+        }
+    ]
+
+if "base_data" not in st.session_state:
+    st.session_state.base_data = {
+        "reference_number": "",
+        "title": "",
+        "owner_entity": "",
+        "procedure_type": "طلب عروض مفتوح",
+        "procurement_type": "أشغال",
+        "session_date": str(date.today()),
+        "session_time": "10:00",
+        "session_place": "",
+        "president": "",
     }
-    
-    doc.add_paragraph("\n")
-    t = doc.add_paragraph()
-    t.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run_t = t.add_run(f"{titles.get(doc_key, '').upper()}\n{m['procedure_type'].upper()} N° : {m['market_ref']}")
-    run_t.bold = True; run_t.font.size = Pt(14); run_t.underline = True
 
-    # الإشارة لمرسوم 2023
-    legal = doc.add_paragraph()
-    legal.add_run("Vu le décret n° 2-22-431 du 15 chaâbane 1444 (8 mars 2023) relatif aux marchés publics.").italic = True
+# ----------------------------
+# Page 1: Basic data
+# ----------------------------
+if page == "البيانات الأساسية":
+    st.subheader("البيانات الأساسية للصفقة")
 
-    doc.add_paragraph(f"\nOBJET : {m['market_object']}").bold = True
-    doc.add_paragraph(f"ESTIMATION DE L'ADMINISTRATION : {m['estimate_total']:,.2f} DHS TTC")
+    col1, col2 = st.columns(2)
 
-    # تطبيق معادلة الثمن المرجعي في المحضر المالي
-    if doc_key == "pv_fin":
-        prices = [c['offer_amount'] for c in comps if c['offer_amount'] > 0]
-        final_ref = calculate_ref_price(m['estimate_total'], prices)
-        doc.add_paragraph(f"PRIX DE REFERENCE CALCULE (Moyenne MO/Concurrents) : {final_ref:,.2f} DHS TTC").bold = True
+    with col1:
+        st.session_state.base_data["reference_number"] = st.text_input(
+            "رقم الصفقة / الاستشارة",
+            value=st.session_state.base_data["reference_number"]
+        )
+        st.session_state.base_data["title"] = st.text_input(
+            "موضوع الصفقة",
+            value=st.session_state.base_data["title"]
+        )
+        st.session_state.base_data["owner_entity"] = st.text_input(
+            "صاحب المشروع / الإدارة",
+            value=st.session_state.base_data["owner_entity"]
+        )
+        st.session_state.base_data["president"] = st.text_input(
+            "اسم رئيس اللجنة",
+            value=st.session_state.base_data["president"]
+        )
 
-    # عرض المتنافسين بشكل سطري (Lignes)
-    if comps:
-        doc.add_paragraph("\nEXAMEN DES OFFRES DES CONCURRENTS :").bold = True
-        for c in comps:
-            p = doc.add_paragraph(style='List Bullet')
-            if doc_key == "pv_fin":
-                p.add_run(f"Société : {c['company_name']} | Offre Financière : ").bold = True
-                p.add_run(f"{c['offer_amount']:,.2f} DHS TTC")
-            else:
-                p.add_run(f"Société : {c['company_name']} | Décision : {c['status']}")
+    with col2:
+        st.session_state.base_data["procedure_type"] = st.selectbox(
+            "نوع المسطرة",
+            ["طلب عروض مفتوح", "طلب عروض محدود", "تفاوض", "استشارة", "مسطرة أخرى"],
+            index=["طلب عروض مفتوح", "طلب عروض محدود", "تفاوض", "استشارة", "مسطرة أخرى"].index(
+                st.session_state.base_data["procedure_type"]
+            ) if st.session_state.base_data["procedure_type"] in ["طلب عروض مفتوح", "طلب عروض محدود", "تفاوض", "استشارة", "مسطرة أخرى"] else 0
+        )
+        st.session_state.base_data["procurement_type"] = st.selectbox(
+            "نوع العملية",
+            ["أشغال", "توريدات", "خدمات"],
+            index=["أشغال", "توريدات", "خدمات"].index(
+                st.session_state.base_data["procurement_type"]
+            ) if st.session_state.base_data["procurement_type"] in ["أشغال", "توريدات", "خدمات"] else 0
+        )
+        st.session_state.base_data["session_date"] = str(
+            st.date_input(
+                "تاريخ الجلسة",
+                value=date.fromisoformat(st.session_state.base_data["session_date"])
+            )
+        )
+        st.session_state.base_data["session_time"] = st.text_input(
+            "ساعة الجلسة",
+            value=st.session_state.base_data["session_time"]
+        )
+        st.session_state.base_data["session_place"] = st.text_input(
+            "مكان الجلسة",
+            value=st.session_state.base_data["session_place"]
+        )
 
-    # التوقيعات (اللجنة)
-    if members:
-        doc.add_paragraph("\n\nMEMBRES DE LA COMMISSION :").bold = True
-        for mem in members:
-            doc.add_paragraph(f"- {mem['member_name']} ({mem['member_role']}) : ...........................")
+    st.success("تم حفظ البيانات الأساسية داخل الجلسة الحالية.")
 
-    doc.add_paragraph(f"\nFait à Askaouen, le {date.today().strftime('%d/%m/%Y')}")
-    bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
+# ----------------------------
+# Page 2: Committee
+# ----------------------------
+elif page == "أعضاء اللجنة":
+    st.subheader("أعضاء اللجنة")
 
-# --- 4. واجهة المستخدم Streamlit ---
-init_db()
-st.title("💼 SMART PRO+ | جماعة أسكاون (مرسوم 2023)")
+    num_members = st.number_input(
+        "عدد أعضاء اللجنة",
+        min_value=1,
+        max_value=20,
+        value=len(st.session_state.committee),
+        step=1
+    )
 
-tabs = st.tabs(["1️⃣ تسجيل الصفقة", "2️⃣ المتنافسون واللجنة", "3️⃣ المحاضر والمعادلة"])
+    while len(st.session_state.committee) < num_members:
+        st.session_state.committee.append({"name": "", "role": "عضو"})
 
-with tabs[0]:
-    with st.form("m_form"):
+    while len(st.session_state.committee) > num_members:
+        st.session_state.committee.pop()
+
+    for i, member in enumerate(st.session_state.committee):
+        st.markdown(f"### العضو {i+1}")
+        c1, c2 = st.columns([2, 1])
+        member["name"] = c1.text_input(
+            f"اسم العضو {i+1}",
+            value=member["name"],
+            key=f"member_name_{i}"
+        )
+        member["role"] = c2.selectbox(
+            f"صفة العضو {i+1}",
+            ["عضو", "مقرر", "رئيس", "ملاحظ"],
+            index=["عضو", "مقرر", "رئيس", "ملاحظ"].index(member["role"]) if member["role"] in ["عضو", "مقرر", "رئيس", "ملاحظ"] else 0,
+            key=f"member_role_{i}"
+        )
+
+    st.success("تم تحديث أعضاء اللجنة.")
+
+# ----------------------------
+# Page 3: Bidders
+# ----------------------------
+elif page == "المتنافسون":
+    st.subheader("المتنافسون")
+
+    num_bidders = st.number_input(
+        "عدد المتنافسين",
+        min_value=1,
+        max_value=50,
+        value=len(st.session_state.bidders),
+        step=1
+    )
+
+    while len(st.session_state.bidders) < num_bidders:
+        st.session_state.bidders.append({
+            "company_name": "",
+            "representative": "",
+            "admin_file": True,
+            "technical_file": True,
+            "financial_file": True,
+            "offer_amount": 0.0,
+        })
+
+    while len(st.session_state.bidders) > num_bidders:
+        st.session_state.bidders.pop()
+
+    for i, bidder in enumerate(st.session_state.bidders):
+        st.markdown(f"### المتنافس {i+1}")
         c1, c2 = st.columns(2)
-        ref = c1.text_input("مرجع الصفقة (N° AO)")
-        p_type = c1.selectbox("نوع المسطرة", ["Appel d'offres ouvert", "Appel d'offres ouvert national", "Appel d'offres simplifié"])
-        obj = c1.text_area("الموضوع")
-        amt = c2.number_input("تقدير الإدارة (Estimation MO)", min_value=0.0)
-        j1, j2, port = c2.date_input("جريدة 1"), c2.date_input("جريدة 2"), c2.date_input("البوابة")
-        if st.form_submit_button("حفظ الصفقة"):
-            conn = get_conn()
-            conn.execute("INSERT INTO markets (market_ref, market_object, procedure_type, estimate_total, date_j1, date_j2, date_portail) VALUES (?,?,?,?,?,?,?)", (ref, obj, p_type, amt, str(j1), str(j2), str(port)))
-            conn.commit(); conn.close(); st.success("✅ تم الحفظ")
+        bidder["company_name"] = c1.text_input(
+            "اسم الشركة / المتنافس",
+            value=bidder["company_name"],
+            key=f"company_name_{i}"
+        )
+        bidder["representative"] = c2.text_input(
+            "اسم الممثل",
+            value=bidder["representative"],
+            key=f"representative_{i}"
+        )
 
-with tabs[1]:
-    all_m = [r['market_ref'] for r in get_conn().execute("SELECT market_ref FROM markets").fetchall()]
-    if all_m:
-        sel = st.selectbox("اختر الصفقة لتعبئة البيانات:", all_m)
-        col_a, col_b = st.columns(2)
-        with col_a.form("comp_form"):
-            st.write("🏢 إضافة شركة متنافسة")
-            c_name, c_price = st.text_input("اسم الشركة"), st.number_input("المبلغ المعروض", min_value=0.0)
-            c_status = st.selectbox("الحالة", ["Admis", "Écarté"])
-            if st.form_submit_button("إضافة"):
-                conn = get_conn(); conn.execute("INSERT INTO competitors (market_ref, company_name, offer_amount, status) VALUES (?,?,?,?)", (sel, c_name, c_price, c_status)); conn.commit(); conn.close(); st.success("تم")
-        with col_b.form("comm_form"):
-            st.write("👥 أعضاء اللجنة")
-            m_name, m_role = st.text_input("الاسم الكامل"), st.text_input("الصفة")
-            if st.form_submit_button("إضافة عضو"):
-                conn = get_conn(); conn.execute("INSERT INTO commission (market_ref, member_name, member_role) VALUES (?,?,?)", (sel, m_name, m_role)); conn.commit(); conn.close(); st.success("تم")
+        c3, c4, c5 = st.columns(3)
+        bidder["admin_file"] = c3.checkbox(
+            "ملف إداري",
+            value=bidder["admin_file"],
+            key=f"admin_file_{i}"
+        )
+        bidder["technical_file"] = c4.checkbox(
+            "ملف تقني",
+            value=bidder["technical_file"],
+            key=f"technical_file_{i}"
+        )
+        bidder["financial_file"] = c5.checkbox(
+            "عرض مالي",
+            value=bidder["financial_file"],
+            key=f"financial_file_{i}"
+        )
 
-with tabs[2]:
-    rows = get_conn().execute("SELECT * FROM markets").fetchall()
-    if rows:
-        target = st.selectbox("اختر الصفقة لإصدار الوثائق:", [r['market_ref'] for r in rows])
-        conn = get_conn()
-        m_data = dict(conn.execute("SELECT * FROM markets WHERE market_ref = ?", (target,)).fetchone())
-        comps = [dict(r) for r in conn.execute("SELECT * FROM competitors WHERE market_ref = ?", (target,)).fetchall()]
-        members = [dict(r) for r in conn.execute("SELECT * FROM commission WHERE market_ref = ?", (target,)).fetchall()]
-        conn.close()
+        bidder["offer_amount"] = st.number_input(
+            "مبلغ العرض",
+            min_value=0.0,
+            value=float(bidder["offer_amount"]),
+            step=1000.0,
+            key=f"offer_amount_{i}"
+        )
 
-        # عرض نتيجة المعادلة الحسابية للمعاينة
-        if comps:
-            final_p = calculate_ref_price(m_data['estimate_total'], [c['offer_amount'] for c in comps])
-            st.info(f"⚖️ الثمن المرجعي المحسوب (المعادلة): {final_p:,.2f} DHS")
+    st.success("تم تحديث بيانات المتنافسين.")
 
-        st.write("### 📄 تحميل القائمة الرسمية:")
-        doc_list = [
-            ("pv_admin", "Pv dossier administratif"), ("pv_tech", "Pv dossier technique"),
-            ("pv_3eme", "Pv 3ème séance"), ("rapport", "Rapport sous-commission"),
-            ("pv_fin", "Pv dossier offre financier (مع العروض السطرية)"),
-            ("os_comm", "Os-commencement"), ("os_notif", "Os-notification")
+# ----------------------------
+# Page 4: Generate minutes
+# ----------------------------
+elif page == "توليد المحضر":
+    st.subheader("توليد محضر فتح الأظرفة")
+
+    data = {
+        **st.session_state.base_data,
+        "committee": st.session_state.committee,
+        "bidders": st.session_state.bidders,
+    }
+
+    if st.button("إنشاء المحضر"):
+        required_fields = [
+            data["reference_number"],
+            data["title"],
+            data["owner_entity"],
+            data["session_place"],
+            data["president"],
         ]
-        
-        c1, c2 = st.columns(2)
-        for i, (k, v) in enumerate(doc_list):
-            col = c1 if i % 2 == 0 else c2
-            if col.button(f"🛠️ تجهيز {v}"):
-                file_bytes = generate_askaouen_docx(k, m_data, comps, members)
-                col.download_button(f"📥 تحميل {v}", file_bytes, f"{k}_{target}.docx")
+
+        if any(not str(x).strip() for x in required_fields):
+            st.error("يرجى ملء جميع الحقول الأساسية قبل توليد المحضر.")
+        else:
+            minutes_text = build_opening_minutes(data)
+
+            st.success("تم إنشاء المحضر بنجاح.")
+            st.text_area("نص المحضر", minutes_text, height=400)
+
+            st.download_button(
+                label="تحميل المحضر بصيغة TXT",
+                data=minutes_text,
+                file_name="minutes_opening.txt",
+                mime="text/plain"
+            )
