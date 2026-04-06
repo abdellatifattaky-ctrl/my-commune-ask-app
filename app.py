@@ -3,10 +3,8 @@ from datetime import date
 
 st.set_page_config(page_title="محاضر الصفقات", layout="wide")
 
-st.title("📄 نظام توليد محاضر الصفقات")
-
 # =========================
-# SESSION
+# INIT
 # =========================
 if "data" not in st.session_state:
     st.session_state.data = {
@@ -27,9 +25,9 @@ page = st.sidebar.radio("القائمة", [
     "المعلومات",
     "اللجنة",
     "المتنافسون",
-    "PV 1 (فتح)",
-    "PV 2 (مالي)",
-    "PV 3 (الإسناد)"
+    "PV 1",
+    "PV 2",
+    "PV 3"
 ])
 
 # =========================
@@ -53,11 +51,13 @@ elif page == "اللجنة":
 
     nb = st.number_input("عدد الأعضاء", 1, 10, 3)
 
-    st.session_state.data["membres"] = []
+    membres = []
     for i in range(nb):
-        name = st.text_input(f"عضو {i+1}", key=f"m{i}")
-        role = st.selectbox("الصفة", ["عضو", "مقرر", "رئيس"], key=f"r{i}")
-        st.session_state.data["membres"].append(f"{name} ({role})")
+        name = st.text_input(f"اسم العضو {i+1}", key=f"m{i}")
+        role = st.selectbox("الصفة", ["رئيس", "عضو", "مقرر"], key=f"r{i}")
+        membres.append(f"{name} ({role})")
+
+    st.session_state.data["membres"] = membres
 
 # =========================
 # PAGE 3
@@ -67,25 +67,27 @@ elif page == "المتنافسون":
 
     nb = st.number_input("عدد المتنافسين", 1, 20, 3)
 
-    st.session_state.data["concurrents"] = []
+    concurrents = []
     for i in range(nb):
-        name = st.text_input(f"شركة {i+1}", key=f"c{i}")
-        montant = st.number_input(f"المبلغ {i+1}", key=f"m{i}", step=1000.0)
-        st.session_state.data["concurrents"].append((name, montant))
+        name = st.text_input(f"اسم الشركة {i+1}", key=f"c{i}")
+        montant = st.number_input(f"المبلغ {i+1}", key=f"amt{i}", step=1000.0)
+        concurrents.append((name, montant))
+
+    st.session_state.data["concurrents"] = concurrents
 
 # =========================
 # PV1
 # =========================
-elif page == "PV 1 (فتح)":
-    if st.button("توليد PV1"):
+elif page == "PV 1":
+    if st.button("توليد محضر فتح الأظرفة"):
         d = st.session_state.data
 
-        concurrents = "\n".join([f"{i+1}) {c[0]}" for i, c in enumerate(d["concurrents"])])
+        liste = "\n".join([f"{i+1}) {c[0]}" for i, c in enumerate(d["concurrents"])])
 
         pv = f"""
 PROCES VERBAL D'APPEL D'OFFRES OUVERT
 
-Séance Publique
+1ère Séance Publique
 
 Le {d['date']} à {d['heure']} la commission s’est réunie à {d['lieu']}.
 
@@ -96,18 +98,18 @@ Objet : {d['objet']}
 N° : {d['reference']}
 
 Liste des concurrents :
-{concurrents}
+{liste}
 
 La séance est levée.
 """
 
-        st.text_area("PV1", pv, height=400)
+        st.text_area("المحضر", pv, height=400)
 
 # =========================
 # PV2
 # =========================
-elif page == "PV 2 (مالي)":
-    if st.button("توليد PV2"):
+elif page == "PV 2":
+    if st.button("توليد محضر التقييم"):
         d = st.session_state.data
 
         lignes = "\n".join([f"{c[0]} : {c[1]} DHS" for c in d["concurrents"]])
@@ -124,26 +126,29 @@ Ouverture des offres financières :
 Classement effectué.
 """
 
-        st.text_area("PV2", pv, height=400)
+        st.text_area("المحضر", pv, height=400)
 
 # =========================
 # PV3
 # =========================
-elif page == "PV 3 (الإسناد)":
-    if st.button("توليد PV3"):
+elif page == "PV 3":
+    if st.button("توليد محضر الإسناد"):
         d = st.session_state.data
 
-        winner = min(d["concurrents"], key=lambda x: x[1]) if d["concurrents"] else ("", 0)
+        if d["concurrents"]:
+            winner = min(d["concurrents"], key=lambda x: x[1])
+        else:
+            winner = ("", 0)
 
         pv = f"""
 PROCES VERBAL 3ème Séance
 
-Après étude des offres,
-La commission propose l’attribution du marché à :
+Après étude des offres،
+La commission propose إسناد الصفقة إلى :
 
-{winner[0]} pour un montant de {winner[1]} DHS
+{winner[0]} بمبلغ {winner[1]} DHS
 
 Objet : {d['objet']}
 """
 
-        st.text_area("PV3", pv, height=400)
+        st.text_area("المحضر", pv, height=400)
